@@ -7,12 +7,37 @@ export const ro = {
     name: 'BibleNote',
     tagline: 'Notițe pentru studiul Bibliei',
   },
+  common: {
+    loading: 'Se încarcă…',
+  },
+  config: {
+    missingTitle: 'Aplicația nu e configurată.',
+    missingHint: 'Lipsesc variabilele de mediu pentru Supabase. Vezi docs/SETUP.md.',
+  },
   nav: {
     main: 'Navigare principală',
     folders: 'Foldere',
     search: 'Căutare',
     tags: 'Etichete',
     settings: 'Setări',
+  },
+  auth: {
+    signInGoogle: 'Intră cu Google',
+    signInEmail: 'Intră cu email',
+    email: 'Email',
+    password: 'Parolă',
+    or: 'sau',
+    noAccessTitle: 'Nu ai acces încă.',
+    noAccessHint: 'Cere un link.',
+    signOut: 'Deconectare',
+    account: 'Cont',
+    guest: 'Invitat',
+    errors: {
+      invalidCredentials: 'Email sau parolă greșită.',
+      emailNotConfirmed: 'Contul nu a fost confirmat încă.',
+      network: 'Nu există conexiune la internet. Încearcă din nou.',
+      generic: 'Nu s-a putut face autentificarea. Încearcă din nou.',
+    },
   },
   folders: {
     title: 'Foldere',

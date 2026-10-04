@@ -21,7 +21,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['scripts/**/*.ts', '*.config.ts'],
+    files: ['scripts/**/*.ts', '*.config.ts', 'supabase/**/*.ts'],
     languageOptions: {
       globals: globals.node,
     },

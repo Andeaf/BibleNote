@@ -1,0 +1,202 @@
+/**
+ * Hand-written mirror of supabase/migrations. Keep it in sync with the SQL.
+ * Shape follows what `supabase gen types typescript` produces so it can be swapped later.
+ */
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
+
+export type SpaceRole = 'viewer' | 'editor' | 'owner'
+export type MemberRole = 'viewer' | 'editor'
+export type FileKind = 'audio' | 'image' | 'document'
+
+export type ProfileRow = {
+  id: string
+  display_name: string | null
+  settings: Json
+  created_at: string
+  updated_at: string
+}
+
+export type SpaceRow = {
+  id: string
+  owner_id: string
+  name: string
+  color: string | null
+  emoji: string | null
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+  purged_at: string | null
+}
+
+export type FolderRow = {
+  id: string
+  space_id: string
+  parent_id: string | null
+  name: string
+  color: string | null
+  emoji: string | null
+  created_by: string | null
+  updated_by: string | null
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+  purged_at: string | null
+}
+
+export type NoteRow = {
+  id: string
+  space_id: string
+  folder_id: string | null
+  title: string
+  content: Json
+  content_text: string
+  tags: string[]
+  pinned: boolean
+  version: number
+  created_by: string | null
+  updated_by: string | null
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+  purged_at: string | null
+}
+
+export type FileRow = {
+  id: string
+  space_id: string
+  folder_id: string | null
+  name: string
+  kind: FileKind
+  mime: string
+  size_bytes: number
+  storage_path: string
+  duration_sec: number | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+  purged_at: string | null
+}
+
+export type ShareLinkRow = {
+  id: string
+  space_id: string
+  role: MemberRole
+  token: string
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type SpaceMemberRow = {
+  id: string
+  space_id: string
+  user_id: string
+  role: MemberRole
+  display_name: string | null
+  link_id: string | null
+  last_seen_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** Server-managed columns that the client never sends. */
+type ServerManaged = 'created_at' | 'updated_at'
+
+type Insert<Row, Required extends keyof Row> = Pick<Row, Required> &
+  Partial<Omit<Row, Required | ServerManaged>>
+
+export interface Database {
+  public: {
+    Tables: {
+      profiles: {
+        Row: ProfileRow
+        Insert: Insert<ProfileRow, 'id'>
+        Update: Partial<Omit<ProfileRow, ServerManaged>>
+        Relationships: []
+      }
+      allowed_emails: {
+        Row: { email: string }
+        Insert: { email: string }
+        Update: { email?: string }
+        Relationships: []
+      }
+      spaces: {
+        Row: SpaceRow
+        Insert: Insert<SpaceRow, 'owner_id' | 'name'>
+        Update: Partial<Omit<SpaceRow, ServerManaged>>
+        Relationships: []
+      }
+      folders: {
+        Row: FolderRow
+        Insert: Insert<FolderRow, 'space_id' | 'name'>
+        Update: Partial<Omit<FolderRow, ServerManaged>>
+        Relationships: []
+      }
+      notes: {
+        Row: NoteRow
+        Insert: Insert<NoteRow, 'space_id'>
+        Update: Partial<Pick<NoteRow, 'folder_id' | 'pinned' | 'deleted_at'>>
+        Relationships: []
+      }
+      files: {
+        Row: FileRow
+        Insert: Insert<
+          FileRow,
+          'space_id' | 'name' | 'kind' | 'mime' | 'size_bytes' | 'storage_path'
+        >
+        Update: Partial<Omit<FileRow, ServerManaged>>
+        Relationships: []
+      }
+      share_links: {
+        Row: ShareLinkRow
+        Insert: Insert<ShareLinkRow, 'space_id' | 'role' | 'token'>
+        Update: Partial<Omit<ShareLinkRow, ServerManaged>>
+        Relationships: []
+      }
+      space_members: {
+        Row: SpaceMemberRow
+        Insert: Insert<SpaceMemberRow, 'space_id' | 'user_id' | 'role'>
+        Update: Partial<Omit<SpaceMemberRow, ServerManaged>>
+        Relationships: []
+      }
+    }
+    Views: { [_ in never]: never }
+    Functions: {
+      is_allowed_email: { Args: Record<PropertyKey, never>; Returns: boolean }
+      my_spaces: { Args: Record<PropertyKey, never>; Returns: { id: string; role: SpaceRole }[] }
+      join_by_token: { Args: { p_token: string; p_display_name?: string | null }; Returns: Json }
+      save_note: { Args: { p_note: Json; p_base_version: number }; Returns: Json }
+      set_link_enabled: {
+        Args: { p_link_id: string; p_enabled: boolean; p_remove_members?: boolean }
+        Returns: Json
+      }
+      regenerate_share_link: {
+        Args: { p_link_id: string; p_remove_members?: boolean }
+        Returns: Json
+      }
+      set_display_name: { Args: { p_space_id: string; p_name: string }; Returns: undefined }
+      touch_presence: { Args: Record<PropertyKey, never>; Returns: undefined }
+      purge_items: { Args: { p_ids: string[] }; Returns: Json }
+      storage_usage: { Args: Record<PropertyKey, never>; Returns: number }
+      ping: { Args: Record<PropertyKey, never>; Returns: string }
+    }
+    Enums: { [_ in never]: never }
+    CompositeTypes: { [_ in never]: never }
+  }
+}
+
+/** Result of save_note. */
+export type SaveNoteResult = {
+  status: 'ok' | 'conflict' | 'gone'
+  note: NoteRow
+}
+
+/** Result of join_by_token. */
+export type JoinResult = {
+  space_id: string
+  role: SpaceRole
+  name: string
+  color: string | null
+  emoji: string | null
+}
