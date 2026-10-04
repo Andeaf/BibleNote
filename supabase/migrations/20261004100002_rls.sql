@@ -71,17 +71,39 @@ as $$
 $$;
 
 -- ---------------------------------------------------------------------------
--- Table privileges: nothing for anon; notes are updated only through save_note except for the
--- metadata columns (folder_id, pinned, deleted_at), which the client updates directly.
+-- Table privileges (rev. 4): nothing for anon; the client may insert and update only the
+-- columns listed here. Everything else (purged_at, created_by, version, size_bytes, the server
+-- timestamps…) is set by triggers or by security definer RPCs. Because of these column grants
+-- PostgREST upserts are not possible: new rows go through INSERT, existing rows through UPDATE.
 -- ---------------------------------------------------------------------------
 
 revoke all on all tables in schema public from anon;
+
+revoke insert, update, delete on public.profiles from authenticated;
+grant update (display_name, settings) on public.profiles to authenticated;
+
+revoke insert, update, delete on public.spaces from authenticated;
+grant insert (id, owner_id, name, color, emoji, deleted_at) on public.spaces to authenticated;
+grant update (name, color, emoji, deleted_at) on public.spaces to authenticated;
+
+revoke insert, update, delete on public.folders from authenticated;
+grant insert (id, space_id, parent_id, name, color, emoji, created_by, updated_by, deleted_at)
+  on public.folders to authenticated;
+grant update (parent_id, name, color, emoji, deleted_at, updated_by)
+  on public.folders to authenticated;
+
 revoke insert, update, delete on public.notes from authenticated;
 grant update (folder_id, pinned, deleted_at) on public.notes to authenticated;
+
+revoke insert, update, delete on public.files from authenticated;
+grant insert (id, space_id, folder_id, name, kind, mime, size_bytes, storage_path, duration_sec,
+              created_by, deleted_at)
+  on public.files to authenticated;
+grant update (folder_id, name, deleted_at) on public.files to authenticated;
+
 revoke insert, update, delete on public.share_links from authenticated;
 revoke insert, update on public.space_members from authenticated;
 revoke all on public.allowed_emails from authenticated;
-revoke delete on public.spaces, public.folders, public.files, public.profiles from authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Row level security

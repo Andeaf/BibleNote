@@ -393,7 +393,7 @@ describe('integrity triggers', () => {
   it('space_id is immutable', async () => {
     const move = await editor.client
       .from('folders')
-      .update({ space_id: spaceB, updated_by: editor.id })
+      .update({ space_id: spaceB, updated_by: editor.id } as never)
       .eq('id', folderF1)
       .select()
     expect(move.error).not.toBeNull()
@@ -575,6 +575,132 @@ describe('realtime', () => {
   it('private space channels admit members only', async () => {
     expect(await subscribeStatus(viewer.client, `space:${spaceA}`)).toBe('SUBSCRIBED')
     expect(await subscribeStatus(stranger.client, `space:${spaceA}`)).not.toBe('SUBSCRIBED')
+  })
+})
+
+describe('column privileges', () => {
+  it('editors cannot set purged_at, created_by or size_bytes on folders and files', async () => {
+    const stamp = new Date().toISOString()
+
+    const folderPurge = await editor.client
+      .from('folders')
+      .update({ purged_at: stamp, updated_by: editor.id } as never)
+      .eq('id', folderF1)
+      .select()
+    expect(folderPurge.error?.code).toBe('42501')
+
+    const folderCreator = await editor.client
+      .from('folders')
+      .update({ created_by: editor.id, updated_by: editor.id } as never)
+      .eq('id', folderF1)
+      .select()
+    expect(folderCreator.error?.code).toBe('42501')
+
+    const folderInsertPurged = await editor.client
+      .from('folders')
+      .insert({ space_id: spaceA, name: 'X', created_by: editor.id, purged_at: stamp } as never)
+      .select()
+    expect(folderInsertPurged.error?.code).toBe('42501')
+
+    const fileId = crypto.randomUUID()
+    must(
+      await editor.client
+        .from('files')
+        .insert({
+          id: fileId,
+          space_id: spaceA,
+          name: 'a.txt',
+          kind: 'document',
+          mime: 'text/plain',
+          size_bytes: 1,
+          storage_path: `${spaceA}/${fileId}`,
+          created_by: editor.id,
+        })
+        .select(),
+    )
+    const filePurge = await editor.client
+      .from('files')
+      .update({ purged_at: stamp } as never)
+      .eq('id', fileId)
+      .select()
+    expect(filePurge.error?.code).toBe('42501')
+    const fileCreator = await editor.client
+      .from('files')
+      .update({ created_by: owner.id } as never)
+      .eq('id', fileId)
+      .select()
+    expect(fileCreator.error?.code).toBe('42501')
+    const fileSize = await editor.client
+      .from('files')
+      .update({ size_bytes: 0 } as never)
+      .eq('id', fileId)
+      .select()
+    expect(fileSize.error?.code).toBe('42501')
+    const fileInsertPurged = await editor.client
+      .from('files')
+      .insert({
+        id: crypto.randomUUID(),
+        space_id: spaceA,
+        name: 'b.txt',
+        kind: 'document',
+        mime: 'text/plain',
+        size_bytes: 1,
+        storage_path: `${spaceA}/${crypto.randomUUID()}`,
+        created_by: editor.id,
+        purged_at: stamp,
+      } as never)
+      .select()
+    expect(fileInsertPurged.error?.code).toBe('42501')
+
+    const spacePurge = await owner.client
+      .from('spaces')
+      .update({ purged_at: stamp } as never)
+      .eq('id', spaceA)
+      .select()
+    expect(spacePurge.error?.code).toBe('42501')
+
+    const renamed = must(
+      await editor.client.from('files').update({ name: 'renamed.txt' }).eq('id', fileId).select(),
+    )
+    expect(renamed).toHaveLength(1)
+  })
+
+  it('internal helpers are not callable as RPCs', async () => {
+    const args = { p_folder_id: folderF1, p_space_id: spaceA } as never
+    const asAnon = await anonClient().rpc('assert_folder_usable' as never, args)
+    expect(asAnon.error?.code).toBe('42501')
+    const asEditor = await editor.client.rpc('assert_folder_usable' as never, args)
+    expect(asEditor.error?.code).toBe('42501')
+  })
+})
+
+describe('save_note idempotency', () => {
+  it('returns ok for an identical payload, whatever the version', async () => {
+    const same = { id: noteN1, space_id: spaceA, title: 'N1 v3' }
+    const before = must(
+      await editor.client.from('notes').select('version').eq('id', noteN1).single(),
+    ).version
+
+    const repeat = must(
+      await editor.client.rpc('save_note', { p_note: same, p_base_version: 1 }),
+    ) as { status: string; note: { version: number } }
+    expect(repeat.status).toBe('ok')
+    expect(repeat.note.version).toBe(before)
+
+    const nullVersionSame = must(
+      await editor.client.rpc('save_note', { p_note: same, p_base_version: null }),
+    ) as { status: string }
+    expect(nullVersionSame.status).toBe('ok')
+
+    const nullVersionChanged = must(
+      await editor.client.rpc('save_note', {
+        p_note: { ...same, title: 'N1 v4' },
+        p_base_version: null,
+      }),
+    ) as { status: string; note: { title: string; version: number } }
+    expect(nullVersionChanged.status).toBe('conflict')
+    expect(nullVersionChanged.note.title).toBe('N1 v3')
+    expect(nullVersionChanged.note.version).toBe(before)
   })
 })
 

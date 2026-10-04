@@ -10,7 +10,7 @@ create extension if not exists pgcrypto with schema extensions;
 
 create table public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
-  display_name text,
+  display_name text check (display_name is null or char_length(display_name) <= 60),
   settings jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -102,7 +102,7 @@ create table public.space_members (
   space_id uuid not null references public.spaces (id) on delete cascade,
   user_id uuid not null references auth.users (id) on delete cascade,
   role text not null check (role in ('viewer', 'editor')),
-  display_name text,
+  display_name text check (display_name is null or char_length(display_name) <= 60),
   link_id uuid references public.share_links (id) on delete set null,
   last_seen_at timestamptz,
   created_at timestamptz not null default now(),
@@ -172,13 +172,16 @@ begin
   insert into public.profiles (id, display_name)
   values (
     new.id,
-    nullif(
-      coalesce(
-        new.raw_user_meta_data ->> 'full_name',
-        new.raw_user_meta_data ->> 'name',
-        split_part(coalesce(new.email, ''), '@', 1)
+    left(
+      nullif(
+        trim(coalesce(
+          new.raw_user_meta_data ->> 'full_name',
+          new.raw_user_meta_data ->> 'name',
+          split_part(coalesce(new.email, ''), '@', 1)
+        )),
+        ''
       ),
-      ''
+      60
     )
   )
   on conflict (id) do nothing;
@@ -268,6 +271,11 @@ begin
   end if;
 end
 $$;
+
+-- Internal helper: not an RPC (it would reveal whether a folder exists and is in the trash).
+-- Supabase grants execute on new functions to anon/authenticated by default, so revoke it.
+-- The triggers below still work: they run as the function owner.
+revoke execute on function public.assert_folder_usable(uuid, uuid) from public, anon, authenticated;
 
 create or replace function public.validate_folder()
 returns trigger

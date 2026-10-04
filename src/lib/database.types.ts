@@ -100,19 +100,21 @@ export type SpaceMemberRow = {
   updated_at: string
 }
 
-/** Server-managed columns that the client never sends. */
-type ServerManaged = 'created_at' | 'updated_at'
-
-type Insert<Row, Required extends keyof Row> = Pick<Row, Required> &
-  Partial<Omit<Row, Required | ServerManaged>>
+/**
+ * Insert/Update types mirror the column grants in supabase/migrations/..._rls.sql
+ * (docs/PLAN.md §3.2): the client can only send these columns. Everything else is set by
+ * triggers or by security definer RPCs. `never` = not allowed from the client at all.
+ */
+type Insertable<Row, Required extends keyof Row, Optional extends keyof Row> = Pick<Row, Required> &
+  Partial<Pick<Row, Optional>>
 
 export interface Database {
   public: {
     Tables: {
       profiles: {
         Row: ProfileRow
-        Insert: Insert<ProfileRow, 'id'>
-        Update: Partial<Omit<ProfileRow, ServerManaged>>
+        Insert: never
+        Update: Partial<Pick<ProfileRow, 'display_name' | 'settings'>>
         Relationships: []
       }
       allowed_emails: {
@@ -123,41 +125,48 @@ export interface Database {
       }
       spaces: {
         Row: SpaceRow
-        Insert: Insert<SpaceRow, 'owner_id' | 'name'>
-        Update: Partial<Omit<SpaceRow, ServerManaged>>
+        Insert: Insertable<SpaceRow, 'owner_id' | 'name', 'id' | 'color' | 'emoji' | 'deleted_at'>
+        Update: Partial<Pick<SpaceRow, 'name' | 'color' | 'emoji' | 'deleted_at'>>
         Relationships: []
       }
       folders: {
         Row: FolderRow
-        Insert: Insert<FolderRow, 'space_id' | 'name'>
-        Update: Partial<Omit<FolderRow, ServerManaged>>
+        Insert: Insertable<
+          FolderRow,
+          'space_id' | 'name',
+          'id' | 'parent_id' | 'color' | 'emoji' | 'created_by' | 'updated_by' | 'deleted_at'
+        >
+        Update: Partial<
+          Pick<FolderRow, 'parent_id' | 'name' | 'color' | 'emoji' | 'deleted_at' | 'updated_by'>
+        >
         Relationships: []
       }
       notes: {
         Row: NoteRow
-        Insert: Insert<NoteRow, 'space_id'>
+        Insert: never
         Update: Partial<Pick<NoteRow, 'folder_id' | 'pinned' | 'deleted_at'>>
         Relationships: []
       }
       files: {
         Row: FileRow
-        Insert: Insert<
+        Insert: Insertable<
           FileRow,
-          'space_id' | 'name' | 'kind' | 'mime' | 'size_bytes' | 'storage_path'
+          'space_id' | 'name' | 'kind' | 'mime' | 'size_bytes' | 'storage_path',
+          'id' | 'folder_id' | 'duration_sec' | 'created_by' | 'deleted_at'
         >
-        Update: Partial<Omit<FileRow, ServerManaged>>
+        Update: Partial<Pick<FileRow, 'folder_id' | 'name' | 'deleted_at'>>
         Relationships: []
       }
       share_links: {
         Row: ShareLinkRow
-        Insert: Insert<ShareLinkRow, 'space_id' | 'role' | 'token'>
-        Update: Partial<Omit<ShareLinkRow, ServerManaged>>
+        Insert: never
+        Update: never
         Relationships: []
       }
       space_members: {
         Row: SpaceMemberRow
-        Insert: Insert<SpaceMemberRow, 'space_id' | 'user_id' | 'role'>
-        Update: Partial<Omit<SpaceMemberRow, ServerManaged>>
+        Insert: never
+        Update: never
         Relationships: []
       }
     }
@@ -166,7 +175,7 @@ export interface Database {
       is_allowed_email: { Args: Record<PropertyKey, never>; Returns: boolean }
       my_spaces: { Args: Record<PropertyKey, never>; Returns: { id: string; role: SpaceRole }[] }
       join_by_token: { Args: { p_token: string; p_display_name?: string | null }; Returns: Json }
-      save_note: { Args: { p_note: Json; p_base_version: number }; Returns: Json }
+      save_note: { Args: { p_note: Json; p_base_version: number | null }; Returns: Json }
       set_link_enabled: {
         Args: { p_link_id: string; p_enabled: boolean; p_remove_members?: boolean }
         Returns: Json

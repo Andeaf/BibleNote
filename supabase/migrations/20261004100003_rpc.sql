@@ -40,7 +40,7 @@ declare
   l public.share_links%rowtype;
   s public.spaces%rowtype;
   m public.space_members%rowtype;
-  v_name text := nullif(trim(coalesce(p_display_name, '')), '');
+  v_name text := left(nullif(trim(coalesce(p_display_name, '')), ''), 60);
 begin
   if uid is null then
     raise exception 'BN_NOT_AUTHENTICATED' using errcode = '42501';
@@ -85,7 +85,11 @@ $$;
 -- ---------------------------------------------------------------------------
 -- save_note(note, base_version): insert, or update title/content/content_text/tags only when
 -- the server version is still base_version. Returns {status: ok | conflict | gone, note}.
--- Metadata (folder_id, pinned, deleted_at) is never touched on update (rev. 2).
+--   * Metadata (folder_id, pinned, deleted_at) is never touched on update (rev. 2).
+--   * Access is checked before anything about the row is revealed (rev. 4).
+--   * Idempotent (rev. 4): when title, content and tags equal the stored row the answer is ok,
+--     whatever the version, so a lost response and a retry never produce a conflict copy.
+--   * base_version null on an existing row is a conflict (rev. 4), except for identical content.
 -- ---------------------------------------------------------------------------
 create or replace function public.save_note(p_note jsonb, p_base_version integer)
 returns jsonb
@@ -97,6 +101,9 @@ declare
   uid uuid := auth.uid();
   v_id uuid;
   v_space uuid;
+  v_title text;
+  v_content jsonb;
+  v_content_text text;
   v_tags text[];
   existing public.notes%rowtype;
 begin
@@ -107,8 +114,17 @@ begin
   if v_id is null then
     raise exception 'BN_INVALID_NOTE' using errcode = 'P0001';
   end if;
+
+  v_title := coalesce(p_note ->> 'title', '');
+  v_content := case
+    when jsonb_typeof(p_note -> 'content') = 'object' then p_note -> 'content'
+    else '{}'::jsonb
+  end;
+  v_content_text := coalesce(p_note ->> 'content_text', '');
   select coalesce(array_agg(x.v), '{}'::text[]) into v_tags
-  from jsonb_array_elements_text(coalesce(p_note -> 'tags', '[]'::jsonb)) as x(v);
+  from jsonb_array_elements_text(
+    case when jsonb_typeof(p_note -> 'tags') = 'array' then p_note -> 'tags' else '[]'::jsonb end
+  ) as x(v);
 
   select * into existing from public.notes where id = v_id for update;
 
@@ -123,9 +139,9 @@ begin
       v_id,
       v_space,
       (p_note ->> 'folder_id')::uuid,
-      coalesce(p_note ->> 'title', ''),
-      coalesce(p_note -> 'content', '{}'::jsonb),
-      coalesce(p_note ->> 'content_text', ''),
+      v_title,
+      v_content,
+      v_content_text,
       v_tags,
       coalesce((p_note ->> 'pinned')::boolean, false),
       1,
@@ -137,20 +153,24 @@ begin
     return jsonb_build_object('status', 'ok', 'note', to_jsonb(existing));
   end if;
 
-  if existing.purged_at is not null then
-    return jsonb_build_object('status', 'gone', 'note', to_jsonb(existing));
-  end if;
   if not public.has_space_access(existing.space_id, 'editor') then
     raise exception 'BN_FORBIDDEN' using errcode = '42501';
   end if;
-  if existing.version <> p_base_version then
+  if existing.purged_at is not null then
+    return jsonb_build_object('status', 'gone', 'note', to_jsonb(existing));
+  end if;
+
+  if existing.title = v_title and existing.content = v_content and existing.tags = v_tags then
+    return jsonb_build_object('status', 'ok', 'note', to_jsonb(existing));
+  end if;
+  if p_base_version is null or existing.version <> p_base_version then
     return jsonb_build_object('status', 'conflict', 'note', to_jsonb(existing));
   end if;
 
   update public.notes
-  set title = coalesce(p_note ->> 'title', ''),
-      content = coalesce(p_note -> 'content', '{}'::jsonb),
-      content_text = coalesce(p_note ->> 'content_text', ''),
+  set title = v_title,
+      content = v_content,
+      content_text = v_content_text,
       tags = v_tags,
       version = version + 1,
       updated_by = uid
@@ -220,7 +240,7 @@ set search_path = public
 as $$
 declare
   uid uuid := auth.uid();
-  v_name text := nullif(trim(coalesce(p_name, '')), '');
+  v_name text := left(nullif(trim(coalesce(p_name, '')), ''), 60);
 begin
   if uid is null then
     raise exception 'BN_NOT_AUTHENTICATED' using errcode = '42501';
@@ -250,7 +270,8 @@ $$;
 -- purge_items(ids): permanent deletion by the owner of each item's space. Rows stay as
 -- tombstones (content scrubbed, purged_at set) so every device learns about it on pull.
 -- Only items already in the trash can be purged; folders and spaces cascade.
--- The client deletes the Storage objects of the affected files before calling this.
+-- Purged file rows keep storage_path: the owner's client calls this first and only then deletes
+-- the Storage objects of the rows that came back purged (rev. 4), plus a sweep for orphans.
 -- Returns {purged: <count>, skipped: [ids not purged]}.
 -- ---------------------------------------------------------------------------
 create or replace function public.purge_items(p_ids uuid[])

@@ -53,7 +53,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return error ? authErrorMessage(error) : null
       },
       signOut: async () => {
-        await supabase.auth.signOut()
+        // Local scope only: signing out here must never log the user out of their other devices.
+        await supabase.auth.signOut({ scope: 'local' })
       },
     }),
     [session, userId, access],

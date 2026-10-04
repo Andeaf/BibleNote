@@ -1,7 +1,8 @@
 name: Keep-alive
 
 # Supabase pauses free projects after 7 days without activity. This calls the public ping() RPC
-# every 3 days. Secrets: SUPABASE_URL (https://<ref>.supabase.co) and SUPABASE_ANON_KEY.
+# every 3 days. Secrets: SUPABASE_URL (https://<ref>.supabase.co) and SUPABASE_ANON_KEY
+# (the publishable key, sent only in the apikey header: publishable keys are not JWTs).
 on:
   schedule:
     - cron: '0 7 */3 * *'
@@ -19,6 +20,5 @@ jobs:
           test -n "$SUPABASE_URL" && test -n "$SUPABASE_ANON_KEY"
           curl --fail --silent --show-error -X POST "$SUPABASE_URL/rest/v1/rpc/ping" \
             -H "apikey: $SUPABASE_ANON_KEY" \
-            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
             -H "Content-Type: application/json" \
             -d '{}'
