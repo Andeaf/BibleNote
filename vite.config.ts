@@ -1,0 +1,60 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath, URL } from 'node:url'
+import tailwindcss from '@tailwindcss/vite'
+import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite'
+import { VitePWA } from 'vite-plugin-pwa'
+
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
+  version: string
+}
+
+// https://vite.dev/config/
+export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
+  plugins: [
+    react(),
+    tailwindcss(),
+    VitePWA({
+      // The app never reloads itself: an update prompt is shown instead,
+      // so an in-progress audio recording is never interrupted.
+      registerType: 'prompt',
+      includeAssets: ['icon.svg', 'apple-touch-icon-180x180.png'],
+      manifest: {
+        name: 'BibleNote',
+        short_name: 'BibleNote',
+        description: 'Notițe pentru studiul Bibliei',
+        lang: 'ro',
+        start_url: '/',
+        scope: '/',
+        display: 'standalone',
+        background_color: '#faf9f6',
+        theme_color: '#faf9f6',
+        icons: [
+          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+          {
+            src: 'pwa-maskable-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+        ],
+      },
+      workbox: {
+        // App shell, fonts and (from phase 5) the Bible JSON are precached.
+        // Supabase requests are never cached: there is no runtimeCaching entry.
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2,json}'],
+        navigateFallback: '/index.html',
+        cleanupOutdatedCaches: true,
+      },
+    }),
+  ],
+})

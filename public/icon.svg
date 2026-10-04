@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="112" fill="#2f6f6d"/>
+  <!-- open book -->
+  <path d="M92 156c56-20 112-16 156 20v196c-44-32-100-36-156-18z" fill="#faf9f6"/>
+  <path d="M420 156c-56-20-112-16-156 20v196c44-32 100-36 156-18z" fill="#faf9f6"/>
+  <path d="M248 176h16v196h-16z" fill="#2f6f6d"/>
+  <!-- bookmark -->
+  <path d="M332 112h40v124l-20-16-20 16z" fill="#e8c36a"/>
+</svg>

@@ -1,0 +1,26 @@
+# Dependencies and build output
+node_modules
+dist
+dist-ssr
+dev-dist
+coverage
+*.tsbuildinfo
+
+# Secrets: every .env file except the example
+.env*
+!.env.example
+*.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Tooling
+.vercel
+supabase/.temp
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+Thumbs.db
