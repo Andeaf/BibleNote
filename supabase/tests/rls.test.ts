@@ -72,7 +72,9 @@ async function mySpaces(client: Client) {
 }
 
 async function subscribeStatus(client: Client, topic: string): Promise<string> {
-  await client.realtime.setAuth()
+  // Pass the user token explicitly: without it the socket keeps using the anon key.
+  const { data } = await client.auth.getSession()
+  await client.realtime.setAuth(data.session?.access_token)
   return new Promise((resolve) => {
     const channel = client.channel(topic, { config: { private: true } })
     const finish = (status: string) => {
