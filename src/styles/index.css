@@ -137,3 +137,26 @@ body {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* Dialog and sheet entrances (used as animate-[bn-…] utilities). */
+@keyframes bn-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes bn-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-state='open'] {
+    animation: none !important;
+  }
+}

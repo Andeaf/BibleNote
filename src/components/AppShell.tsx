@@ -1,6 +1,9 @@
 import { FolderOpen, Search, Settings, Tag } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
+import { FolderTree } from '@/features/folders/FolderTree'
 import { t } from '@/i18n/ro'
+import { SyncIndicator } from './SyncIndicator'
+import { Toaster } from './Toaster'
 
 const navItems = [
   { to: '/', label: t.nav.folders, icon: FolderOpen, end: true },
@@ -10,13 +13,13 @@ const navItems = [
 ]
 
 /**
- * Application frame: sidebar on desktop (lg and up), bottom navigation on phones.
- * Pages render in the <Outlet />.
+ * Application frame: sidebar with the folder tree on desktop (lg and up), bottom navigation
+ * on phones. Pages render in the <Outlet />.
  */
 export function AppShell() {
   return (
     <div className="min-h-dvh lg:flex">
-      <aside className="hidden border-r border-line bg-surface lg:flex lg:w-72 lg:flex-col">
+      <aside className="hidden border-r border-line bg-surface lg:sticky lg:top-0 lg:flex lg:h-dvh lg:w-72 lg:flex-col">
         <div className="px-5 py-4">
           <span className="text-lg font-semibold tracking-tight">{t.app.name}</span>
         </div>
@@ -39,11 +42,20 @@ export function AppShell() {
             </NavLink>
           ))}
         </nav>
+        <div className="mt-4 min-h-0 flex-1 overflow-y-auto border-t border-line pt-3">
+          <FolderTree />
+        </div>
+        <div className="border-t border-line">
+          <SyncIndicator variant="bar" />
+        </div>
       </aside>
 
-      <main className="flex-1 pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-0">
+      <main className="min-w-0 flex-1 pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-0">
         <Outlet />
       </main>
+
+      <SyncIndicator variant="pill" />
+      <Toaster />
 
       <nav
         aria-label={t.nav.main}

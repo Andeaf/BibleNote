@@ -4,8 +4,8 @@ Notițe pentru studiul Bibliei: foldere, notițe formatate, înregistrări audio
 referințe biblice (Cornilescu) și partajare prin link. Merge pe telefon și pe desktop, se instalează
 ca aplicație (PWA) și funcționează offline, cu sincronizare între dispozitive.
 
-**Stare: în lucru.** Fazele 0 (setup) și 1a (schema, securitate, autentificare) sunt gata; urmează
-datele locale și sincronizarea (1b). Planul complet e în [docs/PLAN.md](docs/PLAN.md),
+**Stare: în lucru.** Fazele 0 (setup), 1a (schema, securitate, autentificare) și 1b (date locale,
+sincronizare, foldere) sunt gata; urmează notițele (faza 2). Planul complet e în [docs/PLAN.md](docs/PLAN.md),
 specificația în [docs/SPEC.md](docs/SPEC.md).
 
 ## Tehnologii

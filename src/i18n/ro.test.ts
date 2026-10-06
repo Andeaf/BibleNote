@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { ro } from './ro'
 
+/** Leaves are strings or functions returning strings; functions are sampled with a value. */
 function leaves(value: unknown, path = 'ro'): Array<[string, unknown]> {
+  if (typeof value === 'function') {
+    return [[path, (value as (arg: never) => unknown)('X' as never)]]
+  }
   if (value !== null && typeof value === 'object') {
     return Object.entries(value).flatMap(([key, child]) => leaves(child, `${path}.${key}`))
   }
