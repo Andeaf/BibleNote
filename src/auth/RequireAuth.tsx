@@ -1,26 +1,22 @@
 import { Navigate, Outlet, useLocation } from 'react-router'
 import { FullScreenSpinner } from '@/components/FullScreenSpinner'
-import { NoAccessPage } from '@/features/auth/NoAccessPage'
 import { SyncProvider } from '@/sync/SyncProvider'
 import { useAuth } from './AuthContext'
 
 /**
- * Route guard for the app shell: signed out -> /login; signed in but not allowed to create
- * main folders -> "Nu ai acces încă" (phase 4 adds "Partajate cu mine" for link guests).
- * Once through, the local database and the sync engine run for the session.
+ * Route guard for the app shell: signed out -> /login, any signed-in account -> the app with
+ * its local database and sync engine. Whether the account may create main folders (allowed)
+ * only affects the Folders page, never access: offline the user must still see their data,
+ * and link guests (phase 4) are never "allowed". The spinner covers only the restore of the
+ * persisted session, which needs no network.
  */
 export function RequireAuth() {
-  const { status, allowed } = useAuth()
+  const { status } = useAuth()
   const location = useLocation()
 
-  if (status === 'loading' || (status === 'signed_in' && allowed === null)) {
-    return <FullScreenSpinner />
-  }
+  if (status === 'loading') return <FullScreenSpinner />
   if (status === 'signed_out') {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
-  }
-  if (!allowed) {
-    return <NoAccessPage />
   }
   return (
     <SyncProvider>

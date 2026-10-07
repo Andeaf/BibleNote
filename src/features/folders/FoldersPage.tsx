@@ -9,7 +9,9 @@ import { Menu } from '@/components/ui/Menu'
 import { createSpace, trashSpace, updateSpace } from '@/data/spaces'
 import { sortItems } from '@/data/tree'
 import { t } from '@/i18n/ro'
-import { useSyncRuntime } from '@/sync/SyncContext'
+import { foldersScreen } from '@/auth/allowedAccess'
+import { NoAccessState } from '@/features/auth/NoAccessState'
+import { useSyncRuntime, useSyncState } from '@/sync/SyncContext'
 import { FolderDialog, type FolderFormValue } from './FolderDialog'
 import { FolderIcon } from './FolderIcon'
 import { useSortMode, useSpaces, type SpaceWithRole } from './hooks'
@@ -22,6 +24,12 @@ export function FoldersPage() {
   const { allowed } = useAuth()
   const { db, engine, userId } = useSyncRuntime()
   const spaces = useSpaces()
+  const { lastPullAt } = useSyncState()
+  const screen = foldersScreen({
+    allowed,
+    spaceCount: spaces?.length ?? 0,
+    pulled: lastPullAt !== null,
+  })
   const [sort, setSort] = useSortMode()
   const [dialog, setDialog] = useState<DialogState>(null)
   const [trashing, setTrashing] = useState<SpaceWithRole | null>(null)
@@ -106,8 +114,14 @@ export function FoldersPage() {
       />
 
       <div className="mx-auto max-w-4xl px-4 py-4 lg:px-6">
-        {spaces === undefined ? null : spaces.length === 0 ? (
-          <EmptyState icon={FolderPlus} title={t.folders.title} hint={t.folders.empty} />
+        {spaces === undefined ? null : screen === 'no_access' ? (
+          <NoAccessState />
+        ) : screen !== 'list' ? (
+          <EmptyState
+            icon={FolderPlus}
+            title={t.folders.title}
+            hint={screen === 'empty_owner' ? t.folders.empty : t.folders.emptyShared}
+          />
         ) : (
           <>
             {mine.length > 0 && (
