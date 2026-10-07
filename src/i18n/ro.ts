@@ -16,6 +16,7 @@ export const ro = {
     back: 'Înapoi',
     menu: 'Meniu',
     close: 'Închide',
+    needsInternet: 'Pentru asta e nevoie de internet. Încearcă din nou când ești online.',
   },
   config: {
     missingTitle: 'Aplicația nu e configurată.',
@@ -39,6 +40,8 @@ export const ro = {
     signOut: 'Deconectare',
     account: 'Cont',
     guest: 'Invitat',
+    offlineSession:
+      'Ești conectat offline. Modificările se sincronizează singure când revine internetul.',
     errors: {
       invalidCredentials: 'Email sau parolă greșită.',
       emailNotConfirmed: 'Contul nu a fost confirmat încă.',

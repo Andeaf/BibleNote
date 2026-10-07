@@ -6,7 +6,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { t } from '@/i18n/ro'
 import { syncErrorText } from '@/sync/errorText'
 import { useSyncRuntime } from '@/sync/SyncContext'
-import type { OutboxEntry } from '@/sync/types'
+import { ApiError, type OutboxEntry } from '@/sync/types'
 
 interface FailedItem {
   entry: OutboxEntry
@@ -14,10 +14,11 @@ interface FailedItem {
 }
 
 export function SettingsPage() {
-  const { session } = useAuth()
+  const { session, offline } = useAuth()
   const runtime = useSyncRuntime()
   const { db, engine } = runtime
   const [confirmSignOut, setConfirmSignOut] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
 
   const user = session?.user
   const metadata = (user?.user_metadata ?? {}) as { full_name?: string; name?: string }
@@ -37,19 +38,44 @@ export function SettingsPage() {
   const outboxCount = useLiveQuery(() => db.outbox.count(), [db]) ?? 0
 
   async function signOut() {
-    await runtime.signOutAndWipe()
+    const done = await runtime.signOutAndWipe()
+    if (!done) {
+      setConfirmSignOut(false)
+      setMessage(t.common.needsInternet)
+    }
+  }
+
+  /** Discarding restores the row from the server, so it needs the network. */
+  async function discard(seq: number) {
+    setMessage(null)
+    try {
+      await engine.discard(seq)
+    } catch (error) {
+      const offlineError =
+        !navigator.onLine || (error instanceof ApiError && error.kind === 'network')
+      setMessage(offlineError ? t.common.needsInternet : syncErrorText(String(error)))
+    }
   }
 
   return (
     <>
       <PageHeader title={t.settings.title} />
       <section className="mx-auto max-w-2xl px-4 py-4 lg:px-6">
+        {message && (
+          <p
+            role="status"
+            className="mb-4 rounded-xl border border-line bg-surface px-4 py-3 text-sm"
+          >
+            {message}
+          </p>
+        )}
         <h2 className="mb-2 text-sm font-medium text-muted">{t.auth.account}</h2>
         <div className="rounded-xl border border-line bg-surface">
           <div className="flex min-h-12 items-center justify-between gap-4 px-4 py-2">
             <div className="min-w-0">
               {name && <p className="truncate text-sm font-medium">{name}</p>}
               <p className="truncate text-sm text-muted">{identity}</p>
+              {offline && <p className="mt-1 text-xs text-muted">{t.auth.offlineSession}</p>}
             </div>
             <button
               type="button"
@@ -90,7 +116,7 @@ export function SettingsPage() {
                     <button
                       type="button"
                       className="btn btn-secondary text-danger"
-                      onClick={() => void engine.discard(entry.seq as number)}
+                      onClick={() => void discard(entry.seq as number)}
                     >
                       {t.settings.discard}
                     </button>

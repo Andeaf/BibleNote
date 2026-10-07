@@ -23,8 +23,11 @@ export interface SyncRuntime {
   dismissNotice(id: number): void
   start(accessToken: string | null): void
   stop(): void
-  /** Explicit sign-out on this device: stops sync, ends the session locally, wipes the data. */
-  signOutAndWipe(): Promise<void>
+  /**
+   * Explicit sign-out on this device: ends the session locally, then stops sync and wipes the
+   * data. Resolves false (and changes nothing) when the session could not be ended, e.g. offline.
+   */
+  signOutAndWipe(): Promise<boolean>
 }
 
 /**
@@ -88,9 +91,15 @@ export function createSyncRuntime(userId: string): SyncRuntime {
         clearInterval(presenceTimer)
       })
 
-      // Realtime needs the current user token, also after refreshes.
-      const { data: auth } = supabase.auth.onAuthStateChange((_event, session) => {
-        hub.setAuth(session?.access_token ?? null)
+      // Realtime needs the current user token, also after refreshes. A null session while
+      // signed in offline keeps the last token. When the session is (re)confirmed by the
+      // server, sync resumes at once, without waiting for a timer or a user action.
+      const { data: auth } = supabase.auth.onAuthStateChange((event, session) => {
+        if (!session) return
+        hub.setAuth(session.access_token)
+        if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+          engine.setOnline(true)
+        }
       })
       cleanups.push(() => auth.subscription.unsubscribe())
 
@@ -111,10 +120,15 @@ export function createSyncRuntime(userId: string): SyncRuntime {
     },
 
     async signOutAndWipe() {
+      // auth-js keeps the session when the request fails for lack of network: never wipe the
+      // data of a session that is still active.
+      if (!navigator.onLine) return false
+      const { error } = await supabase.auth.signOut({ scope: 'local' })
+      if (error) return false
       this.stop()
-      db.close()
-      await supabase.auth.signOut({ scope: 'local' })
+      db.close({ disableAutoOpen: true })
       await deleteDb(userId)
+      return true
     },
   }
 }

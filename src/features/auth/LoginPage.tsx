@@ -39,6 +39,10 @@ export function LoginPage() {
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault()
+    if (!navigator.onLine) {
+      setError(t.common.needsInternet)
+      return
+    }
     setBusy(true)
     setError(null)
     const message = await signInWithPassword(email.trim(), password)
@@ -57,7 +61,10 @@ export function LoginPage() {
 
         <button
           type="button"
-          onClick={() => void signInWithGoogle()}
+          onClick={() => {
+            if (!navigator.onLine) setError(t.common.needsInternet)
+            else void signInWithGoogle()
+          }}
           className="btn btn-secondary w-full"
         >
           <GoogleMark />
