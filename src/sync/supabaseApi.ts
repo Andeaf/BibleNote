@@ -18,8 +18,14 @@ export function toApiError(error: PostgrestFailure, status?: number): ApiError {
   if (code === '23505') return new ApiError('unique', error.message, code, status)
   if (code === '42501') return new ApiError('forbidden', error.message, code, status)
   if (code === 'P0001') return new ApiError('validation', error.message, code, status)
-  if (status !== undefined && status >= 500)
+  // Expired or rejected JWT: refresh the session, then retry.
+  if (status === 401 || code === 'PGRST301' || code === 'PGRST303') {
+    return new ApiError('auth', error.message, code, status)
+  }
+  // Timeout, rate limit and server errors are transient.
+  if (status === 408 || status === 429 || (status !== undefined && status >= 500)) {
     return new ApiError('server', error.message, code, status)
+  }
   return new ApiError('unknown', error.message, code, status)
 }
 
@@ -75,6 +81,11 @@ export function createSupabaseApi(client: SupabaseClient<Database>): SyncApi {
       const { data, error, status } = await loose.from(table).update(payload).eq('id', id).select()
       if (error) throw toApiError(error, status)
       return (data ?? []) as AnyRow[]
+    },
+
+    async refreshAuth() {
+      const { error } = await client.auth.refreshSession()
+      if (error) throw toApiError({ message: error.message, code: error.code }, error.status)
     },
 
     async touchPresence() {

@@ -9,7 +9,8 @@ import {
 } from '../types'
 
 export interface FakeCall {
-  method: 'mySpaces' | 'pullPage' | 'fetchByIds' | 'insert' | 'update' | 'touchPresence'
+  method:
+    'mySpaces' | 'pullPage' | 'fetchByIds' | 'insert' | 'update' | 'touchPresence' | 'refreshAuth'
   table?: string
   page?: PullPage
   id?: string
@@ -30,6 +31,8 @@ export class FakeApi implements SyncApi {
     profiles: new Map(),
   }
   access: { id: string; role: SpaceRole }[] = []
+  /** The signed-in user, for owner visibility of purged spaces. */
+  me: string | null = null
   calls: FakeCall[] = []
   /** Ids whose updates are denied by "RLS" (0 rows). */
   denied = new Set<string>()
@@ -68,6 +71,10 @@ export class FakeApi implements SyncApi {
     const rows = [...this.tables[table].values()]
     if (table === 'profiles') return rows
     const accessible = new Set(this.access.map((a) => a.id))
+    // The owner keeps seeing their spaces (and contents) after purge, as RLS allows.
+    for (const space of this.tables.spaces.values()) {
+      if (this.me && space.owner_id === this.me) accessible.add(space.id)
+    }
     return rows.filter((r) => accessible.has(String(table === 'spaces' ? r.id : r.space_id)))
   }
 
@@ -103,6 +110,7 @@ export class FakeApi implements SyncApi {
     this.calls.push(call)
     const failure = this.failWhen(call)
     if (failure) throw failure
+    this.validate(table, payload)
     const id = payload.id as string
     if (this.tables[table].has(id)) {
       throw new ApiError('unique', 'duplicate key value violates unique constraint', '23505', 409)
@@ -130,13 +138,32 @@ export class FakeApi implements SyncApi {
     if (failure) throw failure
     const existing = this.tables[table].get(id)
     if (!existing || this.denied.has(id) || existing.purged_at) return []
+    this.validate(table, payload, existing)
     const row = { ...existing, ...payload, updated_at: this.nextTime() } as AnyRow
     this.tables[table].set(id, row)
     return [{ ...row }]
   }
 
+  /** Server-side rules the sync order depends on: RLS on the space, trigger on the parent. */
+  private validate(table: WritableTable, payload: Record<string, unknown>, existing?: AnyRow) {
+    if (table === 'spaces') return
+    const spaceId = String(payload.space_id ?? existing?.space_id)
+    if (!this.tables.spaces.has(spaceId)) throw forbiddenError()
+    const column = table === 'folders' ? 'parent_id' : 'folder_id'
+    if (!(column in payload)) return
+    const parent = payload[column]
+    if (typeof parent !== 'string') return
+    const folder = this.tables.folders.get(parent)
+    if (!folder || folder.space_id !== spaceId) throw validationError('BN_FOLDER_NOT_IN_SPACE')
+    if (folder.deleted_at || folder.purged_at) throw validationError('BN_FOLDER_DELETED')
+  }
+
   async touchPresence(): Promise<void> {
     this.calls.push({ method: 'touchPresence' })
+  }
+
+  async refreshAuth(): Promise<void> {
+    this.calls.push({ method: 'refreshAuth' })
   }
 }
 
@@ -146,4 +173,5 @@ export const fkError = () =>
 export const serverError = () => new ApiError('server', 'internal error', 'PGRST000', 503)
 export const forbiddenError = () =>
   new ApiError('forbidden', 'new row violates row-level security policy', '42501', 403)
+export const authError = () => new ApiError('auth', 'JWT expired', 'PGRST301', 401)
 export const validationError = (code: string) => new ApiError('validation', code, 'P0001', 400)

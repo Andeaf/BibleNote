@@ -32,7 +32,8 @@ export type AnyRow = Record<string, unknown> & { id: string; updated_at: string 
 export type ApiErrorKind =
   | 'network' // no connection: wait for it, attempts are not consumed
   | 'fk' // 23503: a parent is still behind in the queue, retried with backoff
-  | 'server' // 5xx, retried with backoff
+  | 'server' // 5xx, 408, 429: retried with backoff
+  | 'auth' // 401 / PGRST301: session refreshed, then retried with backoff
   | 'unique' // 23505 on insert: the row already exists, continue as an update
   | 'forbidden' // 42501: RLS or column privilege, failed immediately
   | 'validation' // P0001 (BN_* codes from triggers and RPCs)
@@ -71,6 +72,8 @@ export interface SyncApi {
   /** Returns the updated rows; an empty array means RLS denied it (never an error). */
   update(table: WritableTable, id: string, payload: Record<string, unknown>): Promise<AnyRow[]>
   touchPresence(): Promise<void>
+  /** Refreshes the session after a 401 (expired token). */
+  refreshAuth(): Promise<void>
 }
 
 export type SyncNotice =

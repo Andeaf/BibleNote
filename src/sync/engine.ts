@@ -36,6 +36,9 @@ export interface EngineDeps {
   onNotice?: (notice: SyncNotice) => void
   /** Called after a push cycle with the spaces that changed, to broadcast "pull now". */
   onPushed?: (spaceIds: string[]) => void
+  /** Timer used to wake up scheduled retries; injectable for tests. */
+  setTimer?: (fn: () => void, ms: number) => unknown
+  clearTimer?: (handle: unknown) => void
 }
 
 type PushOutcome =
@@ -68,12 +71,21 @@ export class SyncEngine {
   private pullPromise: Promise<void> | null = null
   private pullAgain = false
   private pushTimer: ReturnType<typeof setTimeout> | null = null
+  private retryTimer: unknown = null
+  /** When the retry timer will fire (engine clock), or null. Exposed for tests. */
+  nextRetryAt: number | null = null
+  private recovered = false
   private readonly deps: EngineDeps
   private readonly now: () => number
+  private readonly setTimer: (fn: () => void, ms: number) => unknown
+  private readonly clearTimer: (handle: unknown) => void
 
   constructor(deps: EngineDeps) {
     this.deps = deps
     this.now = deps.now ?? (() => Date.now())
+    this.setTimer = deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms))
+    this.clearTimer =
+      deps.clearTimer ?? ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>))
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -104,6 +116,51 @@ export class SyncEngine {
   dispose(): void {
     if (this.pushTimer) clearTimeout(this.pushTimer)
     this.pushTimer = null
+    if (this.retryTimer !== null) this.clearTimer(this.retryTimer)
+    this.retryTimer = null
+    this.nextRetryAt = null
+  }
+
+  /**
+   * An entry is marked inflight in IndexedDB before its request. If the app was closed or
+   * reloaded during a push, it stays inflight forever and blocks its row. Resending is safe:
+   * a duplicate insert answers 23505 and continues as an update; updates are idempotent.
+   * Runs once, before the first push of this engine.
+   */
+  async recoverInflight(): Promise<void> {
+    if (this.recovered) return
+    this.recovered = true
+    await this.deps.db.outbox.where('status').equals('inflight').modify({ status: 'pending' })
+  }
+
+  /** Wakes the push loop at the earliest scheduled retry (FK/5xx backoff). */
+  private async scheduleRetry(): Promise<void> {
+    if (this.retryTimer !== null) this.clearTimer(this.retryTimer)
+    this.retryTimer = null
+    this.nextRetryAt = null
+    const now = this.now()
+    let earliest: number | null = null
+    await this.deps.db.outbox
+      .where('status')
+      .equals('pending')
+      .each((entry) => {
+        if (
+          entry.next_attempt_at > now &&
+          (earliest === null || entry.next_attempt_at < earliest)
+        ) {
+          earliest = entry.next_attempt_at
+        }
+      })
+    if (earliest === null) return
+    this.nextRetryAt = earliest
+    this.retryTimer = this.setTimer(
+      () => {
+        this.retryTimer = null
+        this.nextRetryAt = null
+        void this.push()
+      },
+      Math.max(0, (earliest as number) - now),
+    )
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -125,6 +182,7 @@ export class SyncEngine {
   private async runPush(): Promise<void> {
     this.state.update({ pushing: true })
     try {
+      await this.recoverInflight()
       do {
         this.pushAgain = false
         await this.processOutbox()
@@ -132,8 +190,32 @@ export class SyncEngine {
     } catch (error) {
       this.state.update({ lastError: errorMessage(error) })
     } finally {
+      await this.scheduleRetry().catch(() => undefined)
       this.state.update({ pushing: false })
     }
+  }
+
+  /**
+   * Rows a not-yet-confirmed insert will create: anything that points at them must wait.
+   * Failed inserts count too: a child of a parent that failed waits until the parent is
+   * retried or discarded, instead of failing (or moving to the root) on its own.
+   */
+  private unsentInsertKeys(entries: readonly OutboxEntry[]): Set<string> {
+    const keys = new Set<string>()
+    for (const entry of entries) {
+      if (entry.op === 'insert') keys.add(outboxKey(entry.table, entry.row_id))
+    }
+    return keys
+  }
+
+  /** The space and parent folder this entry points at, as outbox keys. */
+  private dependenciesOf(entry: OutboxEntry): string[] {
+    const deps: string[] = []
+    if (entry.table !== 'spaces') deps.push(outboxKey('spaces', entry.space_id))
+    const column = PARENT_COLUMN[entry.table]
+    const parent = column ? entry.payload[column] : null
+    if (typeof parent === 'string') deps.push(outboxKey('folders', parent))
+    return deps
   }
 
   private async processOutbox(): Promise<void> {
@@ -141,6 +223,9 @@ export class SyncEngine {
     const entries = await db.outbox.orderBy('seq').toArray()
     const blocked = new Set<string>()
     const touchedSpaces = new Set<string>()
+    const unsentInserts = this.unsentInsertKeys(entries)
+    let waitedForParent = false
+    let succeeded = false
 
     for (const entry of entries) {
       const key = outboxKey(entry.table, entry.row_id)
@@ -151,6 +236,12 @@ export class SyncEngine {
         blocked.add(key)
         continue
       }
+      // A parent (space or folder) still waiting for its insert: skip this cycle, no attempt used.
+      if (this.dependenciesOf(entry).some((dep) => unsentInserts.has(dep))) {
+        blocked.add(key)
+        waitedForParent = true
+        continue
+      }
       const seq = entry.seq as number
       await db.outbox.update(seq, { status: 'inflight' })
       const outcome = await this.pushEntry(entry)
@@ -158,7 +249,9 @@ export class SyncEngine {
       switch (outcome.type) {
         case 'success':
           await this.afterSuccess(entry, outcome.row)
+          if (entry.op === 'insert') unsentInserts.delete(key)
           touchedSpaces.add(entry.space_id)
+          succeeded = true
           this.state.update({ online: true })
           break
         case 'retry': {
@@ -187,18 +280,36 @@ export class SyncEngine {
           blocked.add(key)
           break
         case 'moved_to_root':
-          await this.moveToRoot(entry)
+          // Only when the parent really is gone: a parent whose insert is still in the outbox
+          // (for instance created while this push was running) will arrive, so wait for it.
+          if (await this.parentInsertPending(entry)) {
+            await db.outbox.update(seq, { status: 'pending' })
+            waitedForParent = true
+          } else {
+            await this.moveToRoot(entry)
+            this.pushAgain = true
+          }
           blocked.add(key)
-          this.pushAgain = true
           break
         case 'convert_to_update':
           await db.outbox.update(seq, { op: 'update', status: 'pending' })
+          unsentInserts.delete(key)
           blocked.add(key)
           this.pushAgain = true
           break
       }
     }
+    // A parent that reached the server in this cycle unblocks the children skipped before it.
+    if (waitedForParent && succeeded) this.pushAgain = true
     if (touchedSpaces.size > 0) this.deps.onPushed?.([...touchedSpaces])
+  }
+
+  private async parentInsertPending(entry: OutboxEntry): Promise<boolean> {
+    const deps = this.dependenciesOf(entry)
+    if (deps.length === 0) return false
+    const entries = await this.deps.db.outbox.toArray()
+    const unsent = this.unsentInsertKeys(entries)
+    return deps.some((dep) => unsent.has(dep))
   }
 
   private async pushEntry(entry: OutboxEntry): Promise<PushOutcome> {
@@ -226,6 +337,10 @@ export class SyncEngine {
           return { type: 'network' }
         case 'fk':
         case 'server':
+          return { type: 'retry', error: error.message }
+        case 'auth':
+          // Expired token (401 / PGRST301): refresh the session, then retry with backoff.
+          await api.refreshAuth().catch(() => undefined)
           return { type: 'retry', error: error.message }
         case 'unique':
           return entry.op === 'insert'
@@ -354,6 +469,10 @@ export class SyncEngine {
     } catch (error) {
       if (error instanceof ApiError && error.kind === 'network') {
         this.state.update({ online: false })
+      } else if (error instanceof ApiError && error.kind === 'auth') {
+        // Expired token: refresh now; the next trigger (timer, focus, realtime) pulls again.
+        await this.deps.api.refreshAuth().catch(() => undefined)
+        this.state.update({ lastError: errorMessage(error) })
       } else {
         this.state.update({ lastError: errorMessage(error) })
       }
@@ -371,7 +490,13 @@ export class SyncEngine {
     const localIds = new Set(local.map((l) => l.space_id))
 
     for (const entry of local) {
-      if (!accessIds.has(entry.space_id)) await this.removeSpaceLocally(entry.space_id, true)
+      if (accessIds.has(entry.space_id)) continue
+      // Only spaces where I am a member are dropped on the strength of my_spaces(). My own
+      // spaces disappear only through their purged_at tombstone: a space created offline is
+      // missing from my_spaces() until its insert reaches the server, and must survive that.
+      const space = await db.spaces.get(entry.space_id)
+      const mine = space ? space.owner_id === this.deps.userId : entry.role === 'owner'
+      if (!mine) await this.removeSpaceLocally(entry.space_id, true)
     }
     for (const entry of access) {
       await db.spaceAccess.put({ space_id: entry.id, role: entry.role })
@@ -432,10 +557,18 @@ export class SyncEngine {
     const { db } = this.deps
     const local = db.table(localTableOf(table))
     const pending = new Set((await db.outbox.toArray()).map((e) => outboxKey(e.table, e.row_id)))
+    const reachable = new Set((await db.spaceAccess.toArray()).map((a) => a.space_id))
     for (const row of rows) {
       if (table === 'spaces' && row.purged_at) {
         await this.removeSpaceLocally(row.id, false)
+        reachable.delete(row.id)
         continue
+      }
+      // Rows of a space that is not (or no longer) reachable here are ignored, e.g. the
+      // contents of a space whose tombstone arrived earlier in this pull.
+      if (table !== 'profiles') {
+        const spaceId = String(table === 'spaces' ? row.id : row.space_id)
+        if (!reachable.has(spaceId)) continue
       }
       if (row.purged_at) {
         await db.transaction('rw', [local, db.outbox], async () => {

@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createFolder, moveFolder, updateFolder } from '@/data/folders'
 import { createSpace } from '@/data/spaces'
 import { BibleNoteDb } from '@/lib/db'
@@ -7,6 +7,7 @@ import { MAX_ATTEMPTS, PAGE_SIZE, SyncEngine, backoffMs } from './engine'
 import { enqueue } from './outbox'
 import {
   FakeApi,
+  authError,
   fkError,
   forbiddenError,
   networkError,
@@ -23,6 +24,7 @@ let api: FakeApi
 let notices: SyncNotice[]
 let clock: number
 let engine: SyncEngine
+let timers: { fn: () => void; ms: number }[]
 
 function makeEngine() {
   return new SyncEngine({
@@ -31,13 +33,22 @@ function makeEngine() {
     userId: USER,
     now: () => clock,
     onNotice: (n) => notices.push(n),
+    // Recorded, never fired: tests drive push() and the clock themselves.
+    setTimer: (fn, ms) => timers.push({ fn, ms }),
+    clearTimer: () => undefined,
   })
 }
 
 function seedSpace(id = SPACE, role: 'owner' | 'editor' | 'viewer' = 'owner', updatedAt?: string) {
   api.seed(
     'spaces',
-    { id, owner_id: USER, name: `Space ${id}`, color: null, emoji: null },
+    {
+      id,
+      owner_id: role === 'owner' ? USER : 'user-other',
+      name: `Space ${id}`,
+      color: null,
+      emoji: null,
+    },
     updatedAt,
   )
   api.access.push({ id, role })
@@ -46,9 +57,16 @@ function seedSpace(id = SPACE, role: 'owner' | 'editor' | 'viewer' = 'owner', up
 beforeEach(async () => {
   db = new BibleNoteDb(`test-${crypto.randomUUID()}`)
   api = new FakeApi()
+  api.me = USER
   notices = []
   clock = Date.parse('2026-06-01T00:00:00Z')
+  timers = []
   engine = makeEngine()
+})
+
+afterEach(() => {
+  engine.dispose()
+  db.close()
 })
 
 describe('pull', () => {
@@ -89,7 +107,7 @@ describe('pull', () => {
     const old = '2025-12-01T00:00:00.000Z'
     seedSpace('space-bbbbbbbb', 'viewer', old)
     api.seed('folders', { id: 'f-b', space_id: 'space-bbbbbbbb', parent_id: null, name: 'B' }, old)
-    api.seed('profiles', { id: USER, display_name: 'Me' }, old)
+    api.seed('profiles', { id: 'user-other', display_name: 'Owner' }, old)
     expect(Date.parse(old)).toBeLessThan(Date.parse(cursor))
 
     api.calls = []
@@ -100,7 +118,7 @@ describe('pull', () => {
       space_id: 'space-bbbbbbbb',
       role: 'viewer',
     })
-    expect((await db.profiles.get(USER))?.display_name).toBe('Me')
+    expect((await db.profiles.get('user-other'))?.display_name).toBe('Owner')
     const scoped = api.calls.filter(
       (c) => c.method === 'pullPage' && c.page?.spaceId === 'space-bbbbbbbb',
     )
@@ -113,8 +131,8 @@ describe('pull', () => {
     ])
   })
 
-  it('removes a space that disappeared from my_spaces, with its rows and outbox entries', async () => {
-    seedSpace()
+  it('removes a member space that disappeared from my_spaces, with its rows and outbox entries', async () => {
+    seedSpace(SPACE, 'editor')
     api.seed('folders', { id: 'f-a', space_id: SPACE, parent_id: null, name: 'A' })
     await engine.pull()
     await enqueue(db, {
@@ -458,5 +476,180 @@ describe('push', () => {
     expect(await moveFolder(db, USER, a.id, a.id)).toBe(false)
     expect(await moveFolder(db, USER, b.id, null)).toBe(true)
     expect((await db.folders.get(b.id))?.parent_id).toBeNull()
+  })
+})
+
+describe('review fixes (phase 1b)', () => {
+  const blank = { color: null, emoji: null }
+
+  it('1. resets entries left inflight by a reload and sends them again', async () => {
+    seedSpace()
+    await engine.pull()
+    const folder = await createFolder(db, USER, SPACE, null, { name: 'A', ...blank })
+    // The insert reached the server, then the page reloaded before the answer was saved.
+    await api.insert('folders', {
+      id: folder.id,
+      space_id: SPACE,
+      parent_id: null,
+      name: 'A',
+      created_by: USER,
+      updated_by: USER,
+    })
+    const [insert] = await db.outbox.toArray()
+    await db.outbox.update(insert?.seq as number, { status: 'inflight' })
+    await updateFolder(db, USER, folder.id, { name: 'A2' })
+    expect(await db.outbox.count()).toBe(2)
+
+    engine.dispose()
+    engine = makeEngine() // app restart
+    await engine.push()
+    expect(await db.outbox.count()).toBe(0)
+    expect(api.tables.folders.get(folder.id)?.name).toBe('A2')
+    expect((await db.folders.get(folder.id))?.name).toBe('A2')
+  })
+
+  it('2. keeps my own space created offline while my_spaces does not list it yet', async () => {
+    const space = await createSpace(db, USER, { name: 'Offline', ...blank })
+    const folder = await createFolder(db, USER, space.id, null, { name: 'F', ...blank })
+    await engine.pull() // answered before the space insert reached the server
+    expect(await db.spaces.get(space.id)).toBeDefined()
+    expect(await db.folders.get(folder.id)).toBeDefined()
+    expect(await db.outbox.count()).toBe(2)
+    expect(notices).toEqual([])
+
+    await engine.push()
+    expect(api.tables.spaces.has(space.id)).toBe(true)
+    expect(api.tables.folders.get(folder.id)?.space_id).toBe(space.id)
+  })
+
+  it('2. drops my own space only through its purged tombstone', async () => {
+    seedSpace()
+    api.seed('folders', { id: 'f-a', space_id: SPACE, parent_id: null, name: 'A' })
+    await engine.pull()
+    api.access = [] // a purged space is no longer in my_spaces
+    await engine.pull()
+    expect(await db.spaces.get(SPACE)).toBeDefined()
+
+    const row = api.tables.spaces.get(SPACE) as Record<string, unknown> & { id: string }
+    api.seed('spaces', { ...row, name: '', purged_at: '2026-01-05T00:00:00.000Z' })
+    await engine.pull()
+    expect(await db.spaces.get(SPACE)).toBeUndefined()
+    expect(await db.folders.count()).toBe(0)
+    expect(notices).toEqual([])
+  })
+
+  it('3. sends a parent before a child moved into it before the first sync', async () => {
+    seedSpace()
+    await engine.pull()
+    const child = await createFolder(db, USER, SPACE, null, { name: 'C', ...blank })
+    const parent = await createFolder(db, USER, SPACE, null, { name: 'P', ...blank })
+    expect(await moveFolder(db, USER, child.id, parent.id)).toBe(true)
+
+    await engine.push()
+    expect(await db.outbox.count()).toBe(0)
+    const inserts = api.calls.filter((c) => c.method === 'insert').map((c) => c.payload?.id)
+    expect(inserts).toEqual([parent.id, child.id])
+    expect(api.tables.folders.get(child.id)?.parent_id).toBe(parent.id)
+    expect(notices).toEqual([])
+  })
+
+  it('3. holds a child while its parent insert waits for a retry, without using attempts', async () => {
+    seedSpace()
+    await engine.pull()
+    const parent = await createFolder(db, USER, SPACE, null, { name: 'P', ...blank })
+    const child = await createFolder(db, USER, SPACE, parent.id, { name: 'C', ...blank })
+    let fail = true
+    api.failWhen = (call) =>
+      fail && call.method === 'insert' && call.payload?.id === parent.id ? serverError() : undefined
+
+    await engine.push()
+    const entries = await db.outbox.orderBy('seq').toArray()
+    expect(entries.map((e) => [e.row_id, e.status, e.attempts])).toEqual([
+      [parent.id, 'pending', 1],
+      [child.id, 'pending', 0],
+    ])
+    expect(api.tables.folders.has(child.id)).toBe(false)
+
+    fail = false
+    clock = entries[0]?.next_attempt_at as number
+    await engine.push()
+    expect(await db.outbox.count()).toBe(0)
+    expect(api.tables.folders.get(child.id)?.parent_id).toBe(parent.id)
+    expect(notices).toEqual([])
+  })
+
+  it('3. holds the contents of a space whose insert has not reached the server', async () => {
+    const space = await createSpace(db, USER, { name: 'S', ...blank })
+    const folder = await createFolder(db, USER, space.id, null, { name: 'F', ...blank })
+    api.failWhen = (call) => (call.table === 'spaces' ? serverError() : undefined)
+
+    await engine.push()
+    const entry = (await db.outbox.toArray()).find((e) => e.row_id === folder.id)
+    expect(entry?.status).toBe('pending')
+    expect(entry?.attempts).toBe(0)
+    expect(api.calls.filter((c) => c.table === 'folders')).toHaveLength(0)
+    expect(notices).toEqual([])
+  })
+
+  it('3. moves a child to the root only once its parent has no insert left', async () => {
+    seedSpace()
+    await engine.pull()
+    const parent = await createFolder(db, USER, SPACE, null, { name: 'P', ...blank })
+    const child = await createFolder(db, USER, SPACE, parent.id, { name: 'C', ...blank })
+    api.failWhen = (call) =>
+      call.method === 'insert' && call.payload?.id === parent.id ? forbiddenError() : undefined
+
+    await engine.push()
+    const entries = await db.outbox.orderBy('seq').toArray()
+    expect(entries.map((e) => [e.row_id, e.status])).toEqual([
+      [parent.id, 'failed'],
+      [child.id, 'pending'],
+    ])
+    expect(api.tables.folders.has(child.id)).toBe(false)
+
+    // Discarding the parent: it never existed on the server, so the child goes to the root.
+    await engine.discard(entries[0]?.seq as number)
+    await engine.push()
+    expect(await db.outbox.count()).toBe(0)
+    expect(api.tables.folders.get(child.id)?.parent_id).toBeNull()
+    expect(notices.map((n) => n.kind)).toEqual(['failed', 'moved_to_root'])
+  })
+
+  it('4. wakes up at the earliest scheduled retry', async () => {
+    seedSpace()
+    await engine.pull()
+    let fail = true
+    api.failWhen = (call) => (fail && call.method === 'insert' ? fkError() : undefined)
+    await createFolder(db, USER, SPACE, null, { name: 'A', ...blank })
+
+    await engine.push()
+    expect(engine.nextRetryAt).toBe(clock + backoffMs(1))
+    expect(timers.at(-1)?.ms).toBe(backoffMs(1))
+
+    fail = false
+    clock = engine.nextRetryAt as number
+    timers.at(-1)?.fn()
+    await engine.push()
+    expect(await db.outbox.count()).toBe(0)
+    expect(engine.nextRetryAt).toBeNull()
+  })
+
+  it('5. refreshes the session after a 401 and retries', async () => {
+    seedSpace()
+    await engine.pull()
+    let fail = true
+    api.failWhen = (call) => (fail && call.method === 'insert' ? authError() : undefined)
+    await createFolder(db, USER, SPACE, null, { name: 'A', ...blank })
+
+    await engine.push()
+    const [entry] = await db.outbox.toArray()
+    expect(entry?.status).toBe('pending')
+    expect(entry?.attempts).toBe(1)
+    expect(api.calls.some((c) => c.method === 'refreshAuth')).toBe(true)
+
+    fail = false
+    clock = entry?.next_attempt_at as number
+    await engine.push()
+    expect(await db.outbox.count()).toBe(0)
   })
 })
