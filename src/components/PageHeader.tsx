@@ -2,6 +2,7 @@ import { ChevronLeft } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { t } from '@/i18n/ro'
+import { SyncIndicator } from './SyncIndicator'
 
 interface PageHeaderProps {
   title: string
@@ -14,10 +15,14 @@ interface PageHeaderProps {
   titleMenu?: ReactNode
 }
 
-/** Sticky top bar on phones, plain heading row on desktop. */
+/**
+ * Sticky top bar on phones, plain heading row on desktop. On phones the sync indicator sits in
+ * this row, before the actions, so nothing floats over the buttons. The bar starts below the
+ * iPhone status bar / notch (safe-area-inset-top).
+ */
 export function PageHeader({ title, backTo, above, actions, titleMenu }: PageHeaderProps) {
   return (
-    <header className="sticky top-0 z-10 border-b border-line bg-canvas/95 backdrop-blur lg:static lg:border-0 lg:bg-transparent">
+    <header className="sticky top-0 z-10 border-b border-line bg-canvas/95 pt-[env(safe-area-inset-top)] backdrop-blur lg:static lg:border-0 lg:bg-transparent lg:pt-0">
       <div className="mx-auto max-w-4xl px-2 lg:px-6 lg:pt-6">
         {above && <div className="hidden lg:block">{above}</div>}
         <div className="flex min-h-14 items-center gap-1">
@@ -34,6 +39,9 @@ export function PageHeader({ title, backTo, above, actions, titleMenu }: PageHea
             {title}
           </h1>
           {titleMenu}
+          <div className="contents lg:hidden">
+            <SyncIndicator variant="icon" />
+          </div>
           {actions && <div className="flex shrink-0 items-center gap-1">{actions}</div>}
         </div>
       </div>

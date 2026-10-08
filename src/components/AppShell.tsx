@@ -50,11 +50,10 @@ export function AppShell() {
         </div>
       </aside>
 
-      <main className="min-w-0 flex-1 pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-0">
+      <main className="min-w-0 flex-1 pb-[calc(9rem+env(safe-area-inset-bottom))] lg:pb-24">
         <Outlet />
       </main>
 
-      <SyncIndicator variant="pill" />
       <Toaster />
 
       <nav

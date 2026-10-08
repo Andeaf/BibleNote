@@ -1,17 +1,30 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { AlertTriangle, CloudOff, RefreshCw } from 'lucide-react'
+import { AlertTriangle, CloudOff, RefreshCw, type LucideIcon } from 'lucide-react'
 import { Link } from 'react-router'
 import { t } from '@/i18n/ro'
 import { useDb, useSyncState } from '@/sync/SyncContext'
 
 interface SyncIndicatorProps {
-  /** `bar`: text row for the sidebar. `pill`: compact floating badge for phones. */
-  variant: 'bar' | 'pill'
+  /**
+   * `bar`: text row at the bottom of the desktop sidebar.
+   * `icon`: 44 px icon placed in the page header row on phones. It is part of the row's layout
+   * (never floating), so it cannot cover a button, and it has the same size in every state.
+   */
+  variant: 'bar' | 'icon'
+}
+
+interface IndicatorContent {
+  icon: LucideIcon
+  text: string
+  tone: string
+  spin: boolean
+  to?: string
+  count?: number
 }
 
 /**
- * Three states worth showing: offline, changes that failed (link to Settings), and work in
- * progress. When everything is synced the bar says so quietly and the pill disappears.
+ * Three states worth showing: changes that failed (link to Settings), offline, and work in
+ * progress. When everything is synced the bar says so quietly and the icon disappears.
  */
 export function SyncIndicator({ variant }: SyncIndicatorProps) {
   const db = useDb()
@@ -25,42 +38,67 @@ export function SyncIndicator({ variant }: SyncIndicatorProps) {
   const pending = counts?.pending ?? 0
   const busy = pending > 0 || state.pushing || state.pulling
 
-  let content: { icon: typeof CloudOff; text: string; tone: string; to?: string } | null = null
+  let content: IndicatorContent | null = null
   if (failed > 0) {
     content = {
       icon: AlertTriangle,
       text: t.sync.failedCount(failed),
       tone: 'text-danger',
+      spin: false,
       to: '/settings',
+      count: failed,
     }
   } else if (!state.online) {
-    content = { icon: CloudOff, text: t.sync.offline, tone: 'text-muted' }
+    content = { icon: CloudOff, text: t.sync.offline, tone: 'text-muted', spin: false }
   } else if (busy) {
-    content = { icon: RefreshCw, text: t.sync.syncing, tone: 'text-muted' }
+    content = { icon: RefreshCw, text: t.sync.syncing, tone: 'text-muted', spin: true }
   } else if (variant === 'bar') {
-    content = { icon: RefreshCw, text: t.sync.upToDate, tone: 'text-muted' }
+    content = { icon: RefreshCw, text: t.sync.upToDate, tone: 'text-muted', spin: false }
   }
   if (!content) return null
 
   const Icon = content.icon
-  const spin = busy && content.icon === RefreshCw ? 'animate-spin' : ''
-  const base =
-    variant === 'bar'
-      ? `flex min-h-11 items-center gap-2 px-3 text-xs ${content.tone}`
-      : `fixed top-3 right-3 z-20 flex min-h-9 items-center gap-2 rounded-full border border-line bg-surface px-3 text-xs shadow ${content.tone} lg:hidden`
-  const body = (
-    <>
-      <Icon className={`size-4 ${spin}`} aria-hidden="true" />
-      <span>{content.text}</span>
-    </>
+  const glyph = (
+    <Icon className={`size-5 ${content.spin ? 'animate-spin' : ''}`} aria-hidden="true" />
   )
+
+  if (variant === 'bar') {
+    const className = `flex min-h-11 items-center gap-2 px-3 text-xs ${content.tone}`
+    const body = (
+      <>
+        {glyph}
+        <span>{content.text}</span>
+      </>
+    )
+    return content.to ? (
+      <Link to={content.to} className={className}>
+        {body}
+      </Link>
+    ) : (
+      <div className={className} role="status">
+        {body}
+      </div>
+    )
+  }
+
+  const className = `relative flex size-11 shrink-0 items-center justify-center rounded-lg ${content.tone}`
+  const badge =
+    content.count !== undefined ? (
+      <span
+        aria-hidden="true"
+        className="absolute top-1 right-1 min-w-4 rounded-full bg-danger px-1 text-center text-[10px] leading-4 font-semibold text-white"
+      >
+        {content.count > 9 ? '9+' : content.count}
+      </span>
+    ) : null
   return content.to ? (
-    <Link to={content.to} className={base}>
-      {body}
+    <Link to={content.to} className={className} aria-label={content.text} title={content.text}>
+      {glyph}
+      {badge}
     </Link>
   ) : (
-    <div className={base} role="status">
-      {body}
-    </div>
+    <span role="status" aria-label={content.text} title={content.text} className={className}>
+      {glyph}
+    </span>
   )
 }

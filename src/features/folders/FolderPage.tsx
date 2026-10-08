@@ -176,7 +176,8 @@ export function FolderPage() {
             {canEdit && (
               <button
                 type="button"
-                className="btn btn-primary ml-2"
+                className="btn btn-primary ml-1 size-11 px-0 sm:ml-2 sm:size-auto sm:px-4"
+                aria-label={t.folders.newFolder}
                 onClick={() => setDialog({ mode: 'create' })}
               >
                 <Plus className="size-4" aria-hidden="true" />

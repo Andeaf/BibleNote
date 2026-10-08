@@ -2,6 +2,7 @@ import { X } from 'lucide-react'
 import { useEffect, useSyncExternalStore } from 'react'
 import { t } from '@/i18n/ro'
 import type { Notice } from '@/sync/runtime'
+import { NoticeStack } from './NoticeStack'
 import { useSyncRuntime } from '@/sync/SyncContext'
 import type { SyncNotice } from '@/sync/types'
 
@@ -38,7 +39,7 @@ function Toast({ item, onDismiss }: { item: Notice; onDismiss: () => void }) {
   )
 }
 
-/** Sync notices ("Nu mai ai acces la…", "mutat în rădăcină") shown above the bottom navigation. */
+/** Sync notices ("Nu mai ai acces la…", "mutat în rădăcină") in the shared notice stack. */
 export function Toaster() {
   const runtime = useSyncRuntime()
   const notices = useSyncExternalStore(
@@ -48,14 +49,12 @@ export function Toaster() {
   )
   if (notices.length === 0) return null
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="pointer-events-none fixed inset-x-4 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 mx-auto flex max-w-md flex-col gap-2 lg:bottom-6"
-    >
-      {notices.slice(-3).map((item) => (
-        <Toast key={item.id} item={item} onDismiss={() => runtime.dismissNotice(item.id)} />
-      ))}
-    </div>
+    <NoticeStack>
+      <div role="status" aria-live="polite" className="flex flex-col gap-2">
+        {notices.slice(-3).map((item) => (
+          <Toast key={item.id} item={item} onDismiss={() => runtime.dismissNotice(item.id)} />
+        ))}
+      </div>
+    </NoticeStack>
   )
 }

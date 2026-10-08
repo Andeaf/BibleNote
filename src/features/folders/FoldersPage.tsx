@@ -102,7 +102,8 @@ export function FoldersPage() {
             {allowed && (
               <button
                 type="button"
-                className="btn btn-primary ml-2"
+                className="btn btn-primary ml-1 size-11 px-0 sm:ml-2 sm:size-auto sm:px-4"
+                aria-label={t.folders.newSpace}
                 onClick={() => setDialog({ mode: 'create' })}
               >
                 <Plus className="size-4" aria-hidden="true" />
@@ -129,13 +130,13 @@ export function FoldersPage() {
                 {shared.length > 0 && (
                   <h2 className="mb-2 text-sm font-medium text-muted">{t.folders.mine}</h2>
                 )}
-                <ul className="grid gap-2 sm:grid-cols-2">{mine.map(card)}</ul>
+                <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">{mine.map(card)}</ul>
               </section>
             )}
             {shared.length > 0 && (
               <section className="mt-6">
                 <h2 className="mb-2 text-sm font-medium text-muted">{t.folders.shared}</h2>
-                <ul className="grid gap-2 sm:grid-cols-2">{shared.map(card)}</ul>
+                <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">{shared.map(card)}</ul>
               </section>
             )}
           </>
