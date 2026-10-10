@@ -29,10 +29,11 @@
   <body>
     <div id="root"></div>
     <!-- One stack for every floating notice (sync toasts, update prompt): they never overlap
-         each other, and sit above the phone bottom navigation. See src/components/NoticeStack.tsx -->
+         each other, and sit above the phone bottom navigation, or above the editor toolbar while
+         it shows (--bn-notice-lift). See src/components/NoticeStack.tsx -->
     <div
       id="bn-notices"
-      class="pointer-events-none fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 mx-auto flex max-w-md flex-col gap-2 px-4 lg:bottom-6"
+      class="pointer-events-none fixed inset-x-0 bottom-[max(calc(4.5rem+env(safe-area-inset-bottom)),var(--bn-notice-lift,0px))] z-40 mx-auto flex max-w-md flex-col gap-2 px-4 lg:bottom-6"
     ></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

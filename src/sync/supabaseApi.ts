@@ -1,6 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database } from '@/lib/database.types'
-import { ApiError, type AnyRow, type PullPage, type ServerTable, type SyncApi } from './types'
+import type { Database, Json } from '@/lib/database.types'
+import {
+  ApiError,
+  type AnyRow,
+  type PullPage,
+  type SaveNoteResponse,
+  type ServerTable,
+  type SyncApi,
+} from './types'
 
 interface PostgrestFailure {
   code?: string
@@ -81,6 +88,15 @@ export function createSupabaseApi(client: SupabaseClient<Database>): SyncApi {
       const { data, error, status } = await loose.from(table).update(payload).eq('id', id).select()
       if (error) throw toApiError(error, status)
       return (data ?? []) as AnyRow[]
+    },
+
+    async saveNote(note, baseVersion) {
+      const { data, error, status } = await client.rpc('save_note', {
+        p_note: note as Json,
+        p_base_version: baseVersion,
+      })
+      if (error) throw toApiError(error, status)
+      return data as unknown as SaveNoteResponse
     },
 
     async refreshAuth() {

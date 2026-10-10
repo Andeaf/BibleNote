@@ -13,18 +13,25 @@ interface MenuProps {
   items: MenuItem[]
   /** Accessible name of the trigger, e.g. "Meniu pentru X". */
   label?: string
+  /** Trigger glyph; "⋯" by default. */
+  icon?: LucideIcon
+  /** Replaces the trigger's look (e.g. a primary "+" button). */
+  triggerClassName?: string
 }
 
 /** The "⋯" menu used on every list item. Keyboard and screen-reader friendly through Radix. */
-export function Menu({ items, label }: MenuProps) {
+export function Menu({ items, label, icon: Icon = MoreHorizontal, triggerClassName }: MenuProps) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger
-        className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-canvas hover:text-ink data-[state=open]:bg-canvas"
+        className={
+          triggerClassName ??
+          'flex size-11 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-canvas hover:text-ink data-[state=open]:bg-canvas'
+        }
         aria-label={label ?? t.common.menu}
         onClick={(event) => event.stopPropagation()}
       >
-        <MoreHorizontal className="size-5" aria-hidden="true" />
+        <Icon className="size-5" aria-hidden="true" />
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content

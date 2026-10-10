@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { Route, Routes } from 'react-router'
 import { AuthProvider } from './auth/AuthProvider'
 import { RequireAuth } from './auth/RequireAuth'
@@ -9,7 +10,11 @@ import { FolderPage } from './features/folders/FolderPage'
 import { FoldersPage } from './features/folders/FoldersPage'
 import { SearchPage } from './features/search/SearchPage'
 import { SettingsPage } from './features/settings/SettingsPage'
-import { TagsPage } from './features/tags/TagsPage'
+import { TagNotesPage, TagsPage } from './features/tags/TagsPage'
+
+// The editor (Tiptap, ProseMirror) is a separate chunk, loaded when a note is opened and
+// precached by the service worker, so it works offline too.
+const NotePage = lazy(() => import('./features/notes/NotePage'))
 
 export function App() {
   return (
@@ -21,8 +26,17 @@ export function App() {
             <Route index element={<FoldersPage />} />
             <Route path="f/:spaceId" element={<FolderPage />} />
             <Route path="f/:spaceId/:folderId" element={<FolderPage />} />
+            <Route
+              path="n/:noteId"
+              element={
+                <Suspense fallback={null}>
+                  <NotePage />
+                </Suspense>
+              }
+            />
             <Route path="search" element={<SearchPage />} />
             <Route path="tags" element={<TagsPage />} />
+            <Route path="tags/:tag" element={<TagNotesPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>

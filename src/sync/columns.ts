@@ -18,7 +18,7 @@ export const INSERT_COLUMNS: Record<WritableTable, readonly string[]> = {
     'updated_by',
     'deleted_at',
   ],
-  // Notes are inserted through save_note (phase 2), never directly.
+  // Notes are inserted through save_note, never directly.
   notes: [],
   files: [
     'id',
@@ -41,6 +41,24 @@ export const UPDATE_COLUMNS: Record<WritableTable, readonly string[]> = {
   notes: ['folder_id', 'pinned', 'deleted_at'],
   files: ['folder_id', 'name', 'deleted_at'],
 }
+
+/**
+ * save_note payloads (the RPC reads these keys from its jsonb argument). A new note sends the
+ * whole row; an existing one only the content: save_note never touches folder_id, pinned or
+ * deleted_at on update (docs/PLAN.md §4.5), those go through `update` entries.
+ */
+export const SAVE_NOTE_CREATE_COLUMNS = [
+  'id',
+  'space_id',
+  'folder_id',
+  'title',
+  'content',
+  'content_text',
+  'tags',
+  'pinned',
+  'deleted_at',
+] as const
+export const SAVE_NOTE_CONTENT_COLUMNS = ['title', 'content', 'content_text', 'tags'] as const
 
 /** The column that points at the parent folder; nulled when the folder no longer exists. */
 export const PARENT_COLUMN: Record<WritableTable, string | null> = {

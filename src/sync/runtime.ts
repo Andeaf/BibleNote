@@ -20,6 +20,8 @@ export interface SyncRuntime {
   engine: SyncEngine
   userId: string
   notices: Store<Notice[]>
+  /** Shows a notice from the UI (e.g. the editor saved the text as a conflict copy). */
+  notify(notice: SyncNotice): void
   dismissNotice(id: number): void
   start(accessToken: string | null): void
   stop(): void
@@ -41,12 +43,14 @@ export function createSyncRuntime(userId: string): SyncRuntime {
   let nextNoticeId = 1
   const cleanups: Array<() => void> = []
 
+  const notify = (notice: SyncNotice) =>
+    notices.set([...notices.get(), { id: nextNoticeId++, notice }])
   const hub = createRealtimeHub(supabase, userId, () => engine.requestPull())
   const engine = new SyncEngine({
     db,
     api,
     userId,
-    onNotice: (notice) => notices.set([...notices.get(), { id: nextNoticeId++, notice }]),
+    onNotice: notify,
     onPushed: (spaceIds) => hub.broadcast(spaceIds),
   })
 
@@ -55,6 +59,7 @@ export function createSyncRuntime(userId: string): SyncRuntime {
     engine,
     userId,
     notices,
+    notify,
     dismissNotice(id) {
       notices.set(notices.get().filter((n) => n.id !== id))
     },

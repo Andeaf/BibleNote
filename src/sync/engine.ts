@@ -1,6 +1,15 @@
+import type { NoteRow } from '@/lib/database.types'
 import type { BibleNoteDb } from '@/lib/db'
-import { INSERT_COLUMNS, PARENT_COLUMN, UPDATE_COLUMNS, pickColumns } from './columns'
-import { outboxKey } from './outbox'
+import {
+  INSERT_COLUMNS,
+  PARENT_COLUMN,
+  SAVE_NOTE_CONTENT_COLUMNS,
+  SAVE_NOTE_CREATE_COLUMNS,
+  UPDATE_COLUMNS,
+  pickColumns,
+} from './columns'
+import { conflictCopy, conflictKey, localDisplayName } from './conflicts'
+import { createsRow, enqueue, outboxKey } from './outbox'
 import { createStore, type Store } from './store'
 import {
   ApiError,
@@ -47,7 +56,10 @@ type PushOutcome =
   | { type: 'network' }
   | { type: 'permanent'; error: string }
   | { type: 'moved_to_root' }
-  | { type: 'convert_to_update' }
+  /** The create already reached the server: continue as an update (of `baseVersion` for notes). */
+  | { type: 'convert_to_update'; baseVersion?: number }
+  | { type: 'conflict'; row: AnyRow }
+  | { type: 'gone' }
 
 export const backoffMs = (attempts: number): number => Math.min(60_000, 1000 * 2 ** (attempts - 1))
 
@@ -196,14 +208,14 @@ export class SyncEngine {
   }
 
   /**
-   * Rows a not-yet-confirmed insert will create: anything that points at them must wait.
-   * Failed inserts count too: a child of a parent that failed waits until the parent is
-   * retried or discarded, instead of failing (or moving to the root) on its own.
+   * Rows a not-yet-confirmed create (insert, or save_note of a new note) will make: anything that
+   * points at them must wait. Failed creates count too: a child of a parent that failed waits
+   * until the parent is retried or discarded, instead of failing (or moving to the root) alone.
    */
   private unsentInsertKeys(entries: readonly OutboxEntry[]): Set<string> {
     const keys = new Set<string>()
     for (const entry of entries) {
-      if (entry.op === 'insert') keys.add(outboxKey(entry.table, entry.row_id))
+      if (createsRow(entry)) keys.add(outboxKey(entry.table, entry.row_id))
     }
     return keys
   }
@@ -227,11 +239,15 @@ export class SyncEngine {
     let waitedForParent = false
     let succeeded = false
 
-    for (const entry of entries) {
-      const key = outboxKey(entry.table, entry.row_id)
+    for (const snapshot of entries) {
+      const key = outboxKey(snapshot.table, snapshot.row_id)
       // Later entries of the same row wait behind a failed, scheduled or in-flight one;
       // other rows are not affected.
       if (blocked.has(key)) continue
+      // Read it again: an earlier entry of this pass may have changed it (the base version after
+      // a save) or removed it (moved into a conflict copy).
+      const entry = await db.outbox.get(snapshot.seq as number)
+      if (!entry) continue
       if (entry.status !== 'pending' || entry.next_attempt_at > this.now()) {
         blocked.add(key)
         continue
@@ -249,7 +265,7 @@ export class SyncEngine {
       switch (outcome.type) {
         case 'success':
           await this.afterSuccess(entry, outcome.row)
-          if (entry.op === 'insert') unsentInserts.delete(key)
+          if (createsRow(entry)) unsentInserts.delete(key)
           touchedSpaces.add(entry.space_id)
           succeeded = true
           this.state.update({ online: true })
@@ -292,10 +308,25 @@ export class SyncEngine {
           blocked.add(key)
           break
         case 'convert_to_update':
-          await db.outbox.update(seq, { op: 'update', status: 'pending' })
+          await db.outbox.update(
+            seq,
+            entry.op === 'save_note'
+              ? { base_version: outcome.baseVersion, status: 'pending' }
+              : { op: 'update', status: 'pending' },
+          )
           unsentInserts.delete(key)
           blocked.add(key)
           this.pushAgain = true
+          break
+        case 'conflict':
+          await this.resolveConflict(entry, outcome.row)
+          blocked.add(key)
+          // The copy is a new create at the end of the outbox.
+          this.pushAgain = true
+          break
+        case 'gone':
+          await this.dropGone(entry)
+          blocked.add(key)
           break
       }
     }
@@ -315,6 +346,7 @@ export class SyncEngine {
   private async pushEntry(entry: OutboxEntry): Promise<PushOutcome> {
     const { api } = this.deps
     try {
+      if (entry.op === 'save_note') return await this.sendSaveNote(entry)
       if (entry.op === 'insert') {
         const row = await api.insert(
           entry.table,
@@ -347,8 +379,9 @@ export class SyncEngine {
             ? { type: 'convert_to_update' }
             : { type: 'permanent', error: error.message }
         case 'validation':
+          // Creates only (inserts and new notes); a refused move stays failed (§2, rev. 3).
           if (
-            entry.op === 'insert' &&
+            createsRow(entry) &&
             PARENT_COLUMN[entry.table] &&
             /BN_FOLDER_DELETED|BN_FOLDER_NOT_IN_SPACE/.test(error.message)
           ) {
@@ -361,19 +394,121 @@ export class SyncEngine {
     }
   }
 
+  /**
+   * save_note through the RPC. A new note sends the whole row and no base version; an existing
+   * one only its content, checked against the version it was based on.
+   */
+  private async sendSaveNote(entry: OutboxEntry): Promise<PushOutcome> {
+    const create = createsRow(entry)
+    const note = {
+      ...pickColumns(entry.payload, create ? SAVE_NOTE_CREATE_COLUMNS : SAVE_NOTE_CONTENT_COLUMNS),
+      id: entry.row_id,
+      space_id: entry.space_id,
+    }
+    const result = await this.deps.api.saveNote(note, create ? null : (entry.base_version ?? null))
+    switch (result.status) {
+      case 'ok':
+        return { type: 'success', row: result.note }
+      case 'gone':
+        return { type: 'gone' }
+      case 'conflict':
+        // A create sent again after its answer was lost (or after a reload left it in flight),
+        // with edits merged in since. The row is our own insert, untouched since: version 1 and
+        // created by me (the id was generated on this device). Like a 23505 on an insert, it
+        // continues as an update of that version instead of becoming a conflict copy.
+        if (create && result.note.version === 1 && result.note.created_by === this.deps.userId) {
+          return { type: 'convert_to_update', baseVersion: 1 }
+        }
+        return { type: 'conflict', row: result.note }
+    }
+  }
+
+  private rowEntries(entry: OutboxEntry): Promise<OutboxEntry[]> {
+    return this.deps.db.outbox
+      .where('[table+row_id]')
+      .equals([entry.table, entry.row_id])
+      .sortBy('seq')
+  }
+
   private async afterSuccess(entry: OutboxEntry, row: AnyRow): Promise<void> {
     const { db } = this.deps
     const table = db.table(entry.table)
     await db.transaction('rw', [table, db.outbox], async () => {
       await db.outbox.delete(entry.seq as number)
       // Edits made while the request was in flight sit in later entries: keep them on top.
-      const later = await db.outbox
-        .where('[table+row_id]')
-        .equals([entry.table, entry.row_id])
-        .toArray()
+      const later = await this.rowEntries(entry)
+      if (entry.op === 'save_note') {
+        // They were written on top of this content, so they continue from its new version.
+        for (const next of later) {
+          if (next.op === 'save_note') {
+            await db.outbox.update(next.seq as number, { base_version: row.version as number })
+          }
+        }
+      }
       const local = Object.assign({}, row, ...later.map((e) => e.payload)) as AnyRow
       await table.put(local)
     })
+  }
+
+  /**
+   * The note changed on the server since this device's base version (docs/PLAN.md §4.5).
+   * Nothing is overwritten: the original takes the server version (with metadata changes still
+   * queued on top), and the local variant, including edits queued behind this entry, becomes a
+   * new note "Titlu (conflict – Nume, dată)" in the same folder. The copy is a create like any
+   * other: it waits for its folder, moves to the root if the folder is gone.
+   */
+  private async resolveConflict(entry: OutboxEntry, server: AnyRow): Promise<void> {
+    const { db, userId } = this.deps
+    const name = await localDisplayName(db, userId, entry.space_id)
+    const at = new Date(this.now())
+    let copy: NoteRow | undefined
+    await db.transaction('rw', [db.notes, db.outbox, db.meta], async () => {
+      const later = (await this.rowEntries(entry)).filter((e) => e.seq !== entry.seq)
+      const laterSaves = later.filter((e) => e.op === 'save_note')
+      const laterMeta = later.filter((e) => e.op !== 'save_note')
+      const local = await db.notes.get(entry.row_id)
+      const variant =
+        local ??
+        (Object.assign({}, server, entry.payload, ...laterSaves.map((e) => e.payload)) as NoteRow)
+      copy = conflictCopy(variant, userId, name, at)
+      await db.notes.put(copy)
+      await enqueue(
+        db,
+        {
+          table: 'notes',
+          row_id: copy.id,
+          space_id: copy.space_id,
+          op: 'save_note',
+          base_version: null,
+          payload: pickColumns(copy, SAVE_NOTE_CREATE_COLUMNS),
+        },
+        this.now(),
+      )
+      await db.notes.put(Object.assign({}, server, ...laterMeta.map((e) => e.payload)) as NoteRow)
+      await db.outbox.bulkDelete([entry, ...laterSaves].map((e) => e.seq as number))
+      // An editor still open on the original sends its last keystrokes to the copy.
+      await db.meta.put({ key: conflictKey(entry.row_id), value: copy.id })
+    })
+    if (copy) {
+      this.deps.onNotice?.({
+        kind: 'conflict',
+        noteId: entry.row_id,
+        copyId: copy.id,
+        name: copy.title,
+      })
+    }
+  }
+
+  /** save_note answered `gone`: the note was purged, so it and its queued changes go. */
+  private async dropGone(entry: OutboxEntry): Promise<void> {
+    const { db } = this.deps
+    const name = await this.rowName(entry.table, entry.row_id)
+    const table = db.table(entry.table)
+    await db.transaction('rw', [table, db.outbox], async () => {
+      await table.delete(entry.row_id)
+      await db.outbox.where('[table+row_id]').equals([entry.table, entry.row_id]).delete()
+    })
+    this.deps.onNotice?.({ kind: 'gone', table: entry.table, name })
   }
 
   private async markFailed(entry: OutboxEntry, error: string): Promise<void> {
@@ -430,16 +565,27 @@ export class SyncEngine {
     await this.push()
   }
 
+  /**
+   * Gives up the local changes of the entry's row: every queued change of that row goes and the
+   * row becomes the server's version again (or disappears if the server never had it). The
+   * server is asked first, so offline this throws and nothing changes.
+   */
   async discard(seq: number): Promise<void> {
     const { db, api } = this.deps
     const entry = await db.outbox.get(seq)
     if (!entry) return
-    await db.outbox.delete(seq)
-    const table = db.table(entry.table)
     const rows = await api.fetchByIds(entry.table, [entry.row_id])
     const server = rows[0]
-    if (server && !server.purged_at) await table.put(server)
-    else await table.delete(entry.row_id)
+    const table = db.table(entry.table)
+    await db.transaction('rw', [table, db.outbox, db.spaceAccess], async () => {
+      await db.outbox.where('[table+row_id]').equals([entry.table, entry.row_id]).delete()
+      if (server && !server.purged_at) {
+        await table.put(server)
+      } else {
+        await table.delete(entry.row_id)
+        if (entry.table === 'spaces') await db.spaceAccess.delete(entry.row_id)
+      }
+    })
   }
 
   // ---------------------------------------------------------------------------------------------

@@ -3,10 +3,14 @@ import type { SpaceRole } from '@/lib/database.types'
 /** Server tables the sync engine pulls. `space_members` is stored locally as `members`. */
 export type ServerTable = 'spaces' | 'folders' | 'notes' | 'files' | 'space_members' | 'profiles'
 
-/** Tables the client writes directly (notes content goes through save_note, phase 2). */
+/** Tables the client writes to (note content through the save_note RPC, the rest directly). */
 export type WritableTable = 'spaces' | 'folders' | 'notes' | 'files'
 
-export type OutboxOp = 'insert' | 'update'
+/**
+ * `insert` / `update`: direct writes (for notes `update` is update_note_meta: folder_id, pinned,
+ * deleted_at). `save_note`: note content through the RPC, checked against `base_version`.
+ */
+export type OutboxOp = 'insert' | 'update' | 'save_note'
 export type OutboxStatus = 'pending' | 'inflight' | 'failed'
 
 /**
@@ -25,6 +29,11 @@ export interface OutboxEntry {
   created_at: number
   next_attempt_at: number
   last_error: string | null
+  /**
+   * save_note only: the server version the content is based on. null = the note does not exist
+   * on the server yet; such an entry creates it and follows every insert rule (createsRow).
+   */
+  base_version?: number | null
 }
 
 export type AnyRow = Record<string, unknown> & { id: string; updated_at: string }
@@ -53,6 +62,12 @@ export class ApiError extends Error {
   }
 }
 
+/** What save_note answers (docs/PLAN.md §3.3). */
+export interface SaveNoteResponse {
+  status: 'ok' | 'conflict' | 'gone'
+  note: AnyRow
+}
+
 export interface PullPage {
   /** Restrict to one space (for `spaces` this filters on id). */
   spaceId?: string
@@ -71,6 +86,8 @@ export interface SyncApi {
   insert(table: WritableTable, payload: Record<string, unknown>): Promise<AnyRow>
   /** Returns the updated rows; an empty array means RLS denied it (never an error). */
   update(table: WritableTable, id: string, payload: Record<string, unknown>): Promise<AnyRow[]>
+  /** The save_note RPC: inserts a new note, or updates the content when the version matches. */
+  saveNote(note: Record<string, unknown>, baseVersion: number | null): Promise<SaveNoteResponse>
   touchPresence(): Promise<void>
   /** Refreshes the session after a 401 (expired token). */
   refreshAuth(): Promise<void>
@@ -80,6 +97,10 @@ export type SyncNotice =
   | { kind: 'access_lost'; name: string }
   | { kind: 'moved_to_root'; table: WritableTable; name: string }
   | { kind: 'failed'; table: WritableTable; name: string; error: string }
+  /** The note changed elsewhere: the local variant was saved as the new note `copyId`. */
+  | { kind: 'conflict'; noteId: string; copyId: string; name: string }
+  /** The row was permanently deleted on the server; the local change was dropped. */
+  | { kind: 'gone'; table: WritableTable; name: string }
 
 export interface SyncState {
   online: boolean

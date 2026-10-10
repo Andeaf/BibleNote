@@ -2,6 +2,7 @@ import type { FolderRow } from '@/lib/database.types'
 import type { BibleNoteDb } from '@/lib/db'
 import { newId, nowIso } from '@/lib/ids'
 import { enqueue } from '@/sync/outbox'
+import { trashNoteRow } from './notes'
 import { descendantIds, isSelfOrDescendant } from './tree'
 
 export interface FolderInput {
@@ -136,17 +137,7 @@ export async function trashFolder(
       })
     }
     const notes = await db.notes.where('folder_id').anyOf(folderIds).toArray()
-    for (const note of notes) {
-      if (note.deleted_at) continue
-      await db.notes.update(note.id, { deleted_at: stamp, updated_at: stamp })
-      await enqueue(db, {
-        table: 'notes',
-        row_id: note.id,
-        space_id: folder.space_id,
-        op: 'update',
-        payload: { deleted_at: stamp },
-      })
-    }
+    for (const note of notes) await trashNoteRow(db, note, stamp)
     const files = await db.files.where('folder_id').anyOf(folderIds).toArray()
     for (const file of files) {
       if (file.deleted_at) continue

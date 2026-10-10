@@ -9,7 +9,9 @@ interface MoveDialogProps {
   open: boolean
   folders: FolderRow[]
   spaceName: string
-  movingId: string
+  /** A folder being moved: it and its subtree are not offered as targets. */
+  movingId?: string
+  title?: string
   currentParentId: string | null
   onClose: () => void
   onMove: (targetParentId: string | null) => Promise<void> | void
@@ -26,6 +28,7 @@ export function MoveDialog({
   folders,
   spaceName,
   movingId,
+  title = t.folders.moveTitle,
   currentParentId,
   onClose,
   onMove,
@@ -34,7 +37,7 @@ export function MoveDialog({
   const [busy, setBusy] = useState(false)
 
   const lines = useMemo(() => {
-    const excluded = new Set([movingId, ...descendantIds(folders, movingId)])
+    const excluded = new Set(movingId ? [movingId, ...descendantIds(folders, movingId)] : [])
     const out: TreeLine[] = []
     const walk = (parentId: string | null, depth: number) => {
       for (const folder of childrenOf(folders, parentId).sort((a, b) =>
@@ -92,7 +95,7 @@ export function MoveDialog({
   )
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()} title={t.folders.moveTitle}>
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()} title={title}>
       <div className="max-h-[50dvh] overflow-y-auto">
         {option(null, `${t.folders.moveRoot} (${spaceName})`, 0)}
         {lines.map(({ folder, depth }) => option(folder.id, folder.name, depth + 1, folder))}

@@ -4,7 +4,7 @@ import { t } from '@/i18n/ro'
 import type { Notice } from '@/sync/runtime'
 import { NoticeStack } from './NoticeStack'
 import { useSyncRuntime } from '@/sync/SyncContext'
-import type { SyncNotice } from '@/sync/types'
+import type { SyncNotice, WritableTable } from '@/sync/types'
 
 const TOAST_MS = 7000
 
@@ -13,11 +13,20 @@ function noticeText(notice: SyncNotice): string {
     case 'access_lost':
       return t.sync.accessLost(notice.name)
     case 'moved_to_root':
-      return t.sync.movedToRoot(notice.name)
+      return notice.table === 'notes'
+        ? t.sync.noteMovedToRoot(notice.name || t.notes.untitled)
+        : t.sync.movedToRoot(notice.name)
     case 'failed':
-      return t.sync.failed(notice.name || t.tables[notice.table])
+      return t.sync.failed(notice.name || itemFallback(notice.table))
+    case 'conflict':
+      return t.notes.conflict
+    case 'gone':
+      return t.sync.gone(notice.name || itemFallback(notice.table))
   }
 }
+
+const itemFallback = (table: WritableTable): string =>
+  table === 'notes' ? t.notes.untitled : t.tables[table]
 
 function Toast({ item, onDismiss }: { item: Notice; onDismiss: () => void }) {
   useEffect(() => {

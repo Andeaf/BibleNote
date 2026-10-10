@@ -79,6 +79,28 @@
   --accent: #2f6f6d;
   --accent-soft: #e3efee;
   --danger: #b4453a;
+  /* Highlight marks in notes (the stored key is yellow | green | blue | pink). */
+  --hl-yellow: #fde68a;
+  --hl-green: #bbf7d0;
+  --hl-blue: #bfdbfe;
+  --hl-pink: #fbcfe8;
+  /* Tag chips: background / text per colour index (lib/tags.ts tagColor). */
+  --tag-0-bg: #fbe4e1;
+  --tag-0-fg: #8f3127;
+  --tag-1-bg: #fbe9d7;
+  --tag-1-fg: #8a4a12;
+  --tag-2-bg: #f6efc8;
+  --tag-2-fg: #6d5b0c;
+  --tag-3-bg: #dff1e4;
+  --tag-3-fg: #2c6a40;
+  --tag-4-bg: #dbefee;
+  --tag-4-fg: #1f625f;
+  --tag-5-bg: #e0ebf8;
+  --tag-5-fg: #2b5487;
+  --tag-6-bg: #ece4f8;
+  --tag-6-fg: #5a3d8c;
+  --tag-7-bg: #f8e2ef;
+  --tag-7-fg: #8a3463;
   color-scheme: light;
 }
 .dark {
@@ -90,6 +112,26 @@
   --accent: #6fb5b2;
   --accent-soft: #1f3534;
   --danger: #e2847a;
+  --hl-yellow: #5c4a12;
+  --hl-green: #1d4d32;
+  --hl-blue: #1e3a5f;
+  --hl-pink: #5b2346;
+  --tag-0-bg: #3d2522;
+  --tag-0-fg: #f0a69c;
+  --tag-1-bg: #3b2c1d;
+  --tag-1-fg: #efbb85;
+  --tag-2-bg: #36321b;
+  --tag-2-fg: #e3d27a;
+  --tag-3-bg: #1f3326;
+  --tag-3-fg: #92d1a6;
+  --tag-4-bg: #1c3332;
+  --tag-4-fg: #8fd0cc;
+  --tag-5-bg: #1f2b3d;
+  --tag-5-fg: #9dbfea;
+  --tag-6-bg: #2c2440;
+  --tag-6-fg: #c3a9ec;
+  --tag-7-bg: #3a2232;
+  --tag-7-fg: #eba3cb;
   color-scheme: dark;
 }
 
@@ -159,4 +201,150 @@ body {
   [data-state='open'] {
     animation: none !important;
   }
+}
+
+/* Tag chips: colour from the tag's letters. */
+.bn-tag-0 {
+  background: var(--tag-0-bg);
+  color: var(--tag-0-fg);
+}
+.bn-tag-1 {
+  background: var(--tag-1-bg);
+  color: var(--tag-1-fg);
+}
+.bn-tag-2 {
+  background: var(--tag-2-bg);
+  color: var(--tag-2-fg);
+}
+.bn-tag-3 {
+  background: var(--tag-3-bg);
+  color: var(--tag-3-fg);
+}
+.bn-tag-4 {
+  background: var(--tag-4-bg);
+  color: var(--tag-4-fg);
+}
+.bn-tag-5 {
+  background: var(--tag-5-bg);
+  color: var(--tag-5-fg);
+}
+.bn-tag-6 {
+  background: var(--tag-6-bg);
+  color: var(--tag-6-fg);
+}
+.bn-tag-7 {
+  background: var(--tag-7-bg);
+  color: var(--tag-7-fg);
+}
+
+/* Highlight colours: marks in notes and the toolbar swatches. */
+.bn-editor mark[data-color='yellow'],
+.bn-swatch[data-color='yellow'] {
+  background: var(--hl-yellow);
+}
+.bn-editor mark[data-color='green'],
+.bn-swatch[data-color='green'] {
+  background: var(--hl-green);
+}
+.bn-editor mark[data-color='blue'],
+.bn-swatch[data-color='blue'] {
+  background: var(--hl-blue);
+}
+.bn-editor mark[data-color='pink'],
+.bn-swatch[data-color='pink'] {
+  background: var(--hl-pink);
+}
+
+/* The note editor: serif, calm, made for long reading. */
+.bn-editor {
+  font-family: var(--font-serif);
+  font-size: 1.125rem;
+  line-height: 1.7;
+  min-height: 40vh;
+  outline: none;
+  overflow-wrap: anywhere;
+}
+.bn-editor > * + * {
+  margin-top: 0.75em;
+}
+.bn-editor h1,
+.bn-editor h2,
+.bn-editor h3 {
+  font-weight: 650;
+  line-height: 1.3;
+  margin-top: 1.4em;
+}
+.bn-editor h1 {
+  font-size: 1.6em;
+}
+.bn-editor h2 {
+  font-size: 1.35em;
+}
+.bn-editor h3 {
+  font-size: 1.15em;
+}
+.bn-editor ul,
+.bn-editor ol {
+  padding-left: 1.5em;
+}
+.bn-editor ul {
+  list-style: disc;
+}
+.bn-editor ol {
+  list-style: decimal;
+}
+.bn-editor li > p {
+  margin: 0;
+}
+.bn-editor li + li {
+  margin-top: 0.25em;
+}
+.bn-editor blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 1em;
+  color: var(--muted);
+  font-style: italic;
+}
+.bn-editor a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.bn-editor mark {
+  color: inherit;
+  border-radius: 0.2em;
+  padding: 0 0.1em;
+}
+.bn-editor ul[data-type='taskList'] {
+  list-style: none;
+  padding-left: 0.25em;
+}
+.bn-editor ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6em;
+}
+.bn-editor ul[data-type='taskList'] li > label {
+  flex: none;
+  margin-top: 0.3em;
+}
+.bn-editor ul[data-type='taskList'] li > label input {
+  width: 1.15em;
+  height: 1.15em;
+  accent-color: var(--accent);
+}
+.bn-editor ul[data-type='taskList'] li > div {
+  flex: 1;
+  min-width: 0;
+}
+.bn-editor ul[data-type='taskList'] li[data-checked='true'] > div {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.bn-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  float: left;
+  height: 0;
+  pointer-events: none;
 }

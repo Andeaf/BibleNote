@@ -51,6 +51,24 @@ export function childrenOf(folders: readonly FolderRow[], parentId: string | nul
 
 export type SortMode = 'name' | 'date'
 
+/** Notes of a list: pinned ones on top, then by title or by last change. */
+export function sortNotes<T extends { title: string; pinned: boolean; updated_at: string }>(
+  notes: readonly T[],
+  mode: SortMode,
+): T[] {
+  const copy = [...notes]
+  copy.sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+    if (mode === 'name') {
+      return (a.title.trim() || '￿').localeCompare(b.title.trim() || '￿', 'ro', {
+        sensitivity: 'base',
+      })
+    }
+    return Date.parse(b.updated_at) - Date.parse(a.updated_at)
+  })
+  return copy
+}
+
 export function sortItems<T extends { name: string; updated_at: string }>(
   items: readonly T[],
   mode: SortMode,

@@ -1,8 +1,10 @@
 import type { SpaceRole } from '@/lib/database.types'
+import { jsonEqual } from '@/lib/jsonEqual'
 import {
   ApiError,
   type AnyRow,
   type PullPage,
+  type SaveNoteResponse,
   type ServerTable,
   type SyncApi,
   type WritableTable,
@@ -10,11 +12,19 @@ import {
 
 export interface FakeCall {
   method:
-    'mySpaces' | 'pullPage' | 'fetchByIds' | 'insert' | 'update' | 'touchPresence' | 'refreshAuth'
+    | 'mySpaces'
+    | 'pullPage'
+    | 'fetchByIds'
+    | 'insert'
+    | 'update'
+    | 'saveNote'
+    | 'touchPresence'
+    | 'refreshAuth'
   table?: string
   page?: PullPage
   id?: string
   payload?: Record<string, unknown>
+  baseVersion?: number | null
 }
 
 /**
@@ -110,6 +120,8 @@ export class FakeApi implements SyncApi {
     this.calls.push(call)
     const failure = this.failWhen(call)
     if (failure) throw failure
+    // No INSERT grant on notes: they are created through save_note only.
+    if (table === 'notes') throw forbiddenError()
     this.validate(table, payload)
     const id = payload.id as string
     if (this.tables[table].has(id)) {
@@ -142,6 +154,104 @@ export class FakeApi implements SyncApi {
     const row = { ...existing, ...payload, updated_at: this.nextTime() } as AnyRow
     this.tables[table].set(id, row)
     return [{ ...row }]
+  }
+
+  /**
+   * save_note as in migration ..._rpc.sql: access first, insert when missing (folder checked by
+   * the trigger), `gone` for purged rows, `ok` for identical content whatever the version,
+   * `conflict` when the version moved (or no base version), else an update of the content only.
+   */
+  async saveNote(note: Record<string, unknown>, baseVersion: number | null) {
+    const call: FakeCall = {
+      method: 'saveNote',
+      table: 'notes',
+      id: String(note.id),
+      payload: note,
+    }
+    call.baseVersion = baseVersion
+    this.calls.push(call)
+    const failure = this.failWhen(call)
+    if (failure) throw failure
+    const id = String(note.id)
+    const title = typeof note.title === 'string' ? note.title : ''
+    const content = note.content && typeof note.content === 'object' ? note.content : {}
+    const tags = Array.isArray(note.tags) ? note.tags : []
+    const existing = this.tables.notes.get(id)
+    const reply = (status: SaveNoteResponse['status'], row: AnyRow): SaveNoteResponse => ({
+      status,
+      note: { ...row },
+    })
+
+    if (!existing) {
+      const spaceId = String(note.space_id)
+      if (!this.canEdit(spaceId)) throw forbiddenError()
+      this.validate('notes', { space_id: spaceId, folder_id: note.folder_id ?? null })
+      const time = this.nextTime()
+      const row = {
+        id,
+        space_id: spaceId,
+        folder_id: note.folder_id ?? null,
+        title,
+        content,
+        content_text: typeof note.content_text === 'string' ? note.content_text : '',
+        tags,
+        pinned: note.pinned === true,
+        version: 1,
+        created_by: this.me,
+        updated_by: this.me,
+        created_at: time,
+        updated_at: time,
+        deleted_at: note.deleted_at ?? null,
+        purged_at: null,
+      } as AnyRow
+      this.tables.notes.set(id, row)
+      return reply('ok', row)
+    }
+    if (!this.canEdit(String(existing.space_id))) throw forbiddenError()
+    if (existing.purged_at) return reply('gone', existing)
+    if (
+      existing.title === title &&
+      jsonEqual(existing.content, content) &&
+      jsonEqual(existing.tags, tags)
+    ) {
+      return reply('ok', existing)
+    }
+    if (baseVersion === null || existing.version !== baseVersion) {
+      return reply('conflict', existing)
+    }
+    const row = {
+      ...existing,
+      title,
+      content,
+      content_text: typeof note.content_text === 'string' ? note.content_text : '',
+      tags,
+      version: (existing.version as number) + 1,
+      updated_by: this.me,
+      updated_at: this.nextTime(),
+    } as AnyRow
+    this.tables.notes.set(id, row)
+    return reply('ok', row)
+  }
+
+  /** Another device saves a note: version + 1, like a successful save_note. */
+  editNote(id: string, changes: Record<string, unknown>, by = 'user-other'): AnyRow {
+    const existing = this.tables.notes.get(id) as AnyRow
+    const row = {
+      ...existing,
+      ...changes,
+      version: (existing.version as number) + 1,
+      updated_by: by,
+      updated_at: this.nextTime(),
+    } as AnyRow
+    this.tables.notes.set(id, row)
+    return row
+  }
+
+  private canEdit(spaceId: string): boolean {
+    const space = this.tables.spaces.get(spaceId)
+    if (!space) return false
+    if (this.me && space.owner_id === this.me) return true
+    return this.access.some((a) => a.id === spaceId && a.role !== 'viewer')
   }
 
   /** Server-side rules the sync order depends on: RLS on the space, trigger on the parent. */
