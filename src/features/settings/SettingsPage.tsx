@@ -76,11 +76,13 @@ export function SettingsPage() {
       <ConfirmDialog
         open={confirmSignOut}
         title={t.settings.signOutTitle}
-        message={
-          outboxCount > 0
-            ? `${t.settings.signOutUnsynced(outboxCount)} ${t.settings.signOutHint}`
-            : t.settings.signOutHint
-        }
+        message={[
+          outboxCount > 0 ? t.settings.signOutUnsynced(outboxCount) : '',
+          user?.is_anonymous ? t.settings.signOutGuest : '',
+          t.settings.signOutHint,
+        ]
+          .filter(Boolean)
+          .join(' ')}
         confirmLabel={t.auth.signOut}
         destructive={outboxCount > 0}
         onCancel={() => setConfirmSignOut(false)}

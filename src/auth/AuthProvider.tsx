@@ -109,6 +109,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         return error ? authErrorMessage(error) : null
       },
+      signInAsGuest: async () => {
+        const { error } = await supabase.auth.signInAnonymously()
+        return error ? authErrorMessage(error) : null
+      },
       signOut: async () => {
         // Local scope only: never log the user out of their other devices. auth-js keeps the
         // session when the request fails for lack of network, so report it instead of pretending.

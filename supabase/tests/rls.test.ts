@@ -4,9 +4,10 @@
  *
  * It creates throwaway users (owner, editor, viewer, stranger, anonymous guest), two spaces,
  * exercises every cell of the access matrix and deletes everything it created.
- * Tests run in file order; destructive ones (disable/regenerate links) come last.
+ * Tests run in file order; destructive ones (disable/regenerate links) come last. Phase 4 adds
+ * the sharing flows: guests through links, roles that never go down, removing people, presence.
  */
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Database } from '../../src/lib/database.types.ts'
 
@@ -703,6 +704,206 @@ describe('save_note idempotency', () => {
     expect(nullVersionChanged.status).toBe('conflict')
     expect(nullVersionChanged.note.title).toBe('N1 v3')
     expect(nullVersionChanged.note.version).toBe(before)
+  })
+})
+
+/** A new guest without an account, as on a share link (cleaned up at the end). */
+async function newGuest(): Promise<{ id: string; client: Client }> {
+  const client = anonClient()
+  const { data, error } = await client.auth.signInAnonymously()
+  if (error || !data.user) throw new Error(error?.message ?? 'anonymous sign-in failed')
+  cleanup.users.push(data.user.id)
+  return { id: data.user.id, client }
+}
+
+/** Joins the private channel of a space; resolves once subscribed. */
+async function joinChannel(
+  client: Client,
+  topic: string,
+  setup: (channel: RealtimeChannel) => void = () => undefined,
+): Promise<RealtimeChannel> {
+  const { data } = await client.auth.getSession()
+  await client.realtime.setAuth(data.session?.access_token)
+  const channel = client.channel(topic, {
+    config: { private: true, broadcast: { self: false } },
+  })
+  setup(channel)
+  // Presence is enabled on a channel only when a presence listener exists before subscribing
+  // (the app's realtime hub registers one on every space channel).
+  channel.on('presence', { event: 'sync' }, () => undefined)
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${topic}: not subscribed`)), 10_000)
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        clearTimeout(timer)
+        resolve()
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        clearTimeout(timer)
+        reject(new Error(`${topic}: ${status}`))
+      }
+    })
+  })
+  return channel
+}
+
+/** Polls until `check` holds or the time is up; returns the last result. */
+async function eventually(check: () => boolean, ms = 10_000): Promise<boolean> {
+  const end = Date.now() + ms
+  while (Date.now() < end) {
+    if (check()) return true
+    await new Promise((resolve) => setTimeout(resolve, 200))
+  }
+  return check()
+}
+
+describe('sharing (phase 4)', () => {
+  it('a guest from the viewer link reads the space but never writes', async () => {
+    expect(must(await guest.client.from('notes').select('id'))).toEqual(
+      expect.arrayContaining([{ id: noteN1 }]),
+    )
+    expect(must(await guest.client.from('share_links').select('id'))).toEqual([])
+
+    const folder = await guest.client
+      .from('folders')
+      .insert({ space_id: spaceA, name: 'X', created_by: guest.id })
+    expect(folder.error?.code).toBe('42501')
+    const note = await guest.client.rpc('save_note', {
+      p_note: { id: crypto.randomUUID(), space_id: spaceA, title: 'X', content: {} },
+      p_base_version: null,
+    })
+    expect(note.error?.code).toBe('42501')
+    const upload = await guest.client.storage
+      .from('files')
+      .upload(`${spaceA}/${crypto.randomUUID()}`, new Blob(['x']))
+    expect(upload.error).not.toBeNull()
+  })
+
+  it('a guest from the editor link writes; opening the viewer link later keeps editor', async () => {
+    const g = await newGuest()
+    must(await g.client.rpc('join_by_token', { p_token: viewerLink.token, p_display_name: 'G2' }))
+    expect(await mySpaces(g.client)).toEqual([{ id: spaceA, role: 'viewer' }])
+    must(await g.client.rpc('join_by_token', { p_token: editorLink.token }))
+    must(await g.client.rpc('join_by_token', { p_token: viewerLink.token }))
+    expect(await mySpaces(g.client)).toEqual([{ id: spaceA, role: 'editor' }])
+
+    const saved = must(
+      await g.client.rpc('save_note', {
+        p_note: { id: crypto.randomUUID(), space_id: spaceA, title: 'De la invitat', content: {} },
+        p_base_version: null,
+      }),
+    ) as { status: string; note: { created_by: string } }
+    expect(saved.status).toBe('ok')
+    expect(saved.note.created_by).toBe(g.id)
+    // The name given on the first link stays when later links come without one.
+    const me = must(
+      await g.client.from('space_members').select('display_name, role').eq('user_id', g.id),
+    )
+    expect(me).toEqual([{ display_name: 'G2', role: 'editor' }])
+  })
+
+  it('the owner opening their own link stays owner, without a member row', async () => {
+    const joined = must(await owner.client.rpc('join_by_token', { p_token: editorLink.token })) as {
+      role: string
+      space_id: string
+    }
+    expect(joined).toMatchObject({ role: 'owner', space_id: spaceA })
+    expect(must(await admin.from('space_members').select('id').eq('user_id', owner.id))).toEqual([])
+  })
+
+  it('names are cut at 60 characters; members see names and last visits, strangers nothing', async () => {
+    const g = await newGuest()
+    must(
+      await g.client.rpc('join_by_token', {
+        p_token: viewerLink.token,
+        p_display_name: 'N'.repeat(80),
+      }),
+    )
+    const seen = must(
+      await viewer.client.from('space_members').select('user_id, display_name, last_seen_at'),
+    )
+    const row = seen.find((m) => m.user_id === g.id)
+    expect(row?.display_name).toHaveLength(60)
+    expect(row?.last_seen_at).not.toBeNull()
+    expect(seen.map((m) => m.user_id)).toEqual(expect.arrayContaining([editor.id, guest.id]))
+    expect(must(await stranger.client.from('space_members').select('id'))).toEqual([])
+  })
+
+  it('the owner removes a person, who loses access at once; members cannot remove anyone', async () => {
+    const g = await newGuest()
+    must(await g.client.rpc('join_by_token', { p_token: viewerLink.token, p_display_name: 'G4' }))
+    const [member] = must(await owner.client.from('space_members').select('id').eq('user_id', g.id))
+
+    const self = must(await g.client.from('space_members').delete().eq('user_id', g.id).select())
+    expect(self).toEqual([])
+    const byEditor = must(
+      await editor.client.from('space_members').delete().eq('user_id', g.id).select(),
+    )
+    expect(byEditor).toEqual([])
+
+    const removed = must(
+      await owner.client
+        .from('space_members')
+        .delete()
+        .eq('id', member?.id ?? '')
+        .select('id'),
+    )
+    expect(removed).toHaveLength(1)
+    expect(await mySpaces(g.client)).toEqual([])
+    expect(must(await g.client.from('notes').select('id'))).toEqual([])
+    expect(await subscribeStatus(g.client, `space:${spaceA}`)).not.toBe('SUBSCRIBED')
+  })
+
+  it('a link turned off without removing people keeps their access, but lets nobody in', async () => {
+    must(
+      await owner.client.rpc('set_link_enabled', {
+        p_link_id: viewerLink.id,
+        p_enabled: false,
+        p_remove_members: false,
+      }),
+    )
+    expect(await mySpaces(viewer.client)).toEqual([{ id: spaceA, role: 'viewer' }])
+    const g = await newGuest()
+    const join = await g.client.rpc('join_by_token', { p_token: viewerLink.token })
+    expect(join.error?.message).toContain('BN_INVALID_LINK')
+    must(await owner.client.rpc('set_link_enabled', { p_link_id: viewerLink.id, p_enabled: true }))
+  })
+
+  it('presence: a viewer is seen with the note it has open, but cannot broadcast', async () => {
+    const received: string[] = []
+    let ownerChannel: RealtimeChannel | null = null
+    ownerChannel = await joinChannel(owner.client, `space:${spaceA}`, (channel) => {
+      channel.on('broadcast', { event: 'changed' }, ({ payload }) =>
+        received.push(String((payload as { by?: string }).by)),
+      )
+    })
+    const viewerChannel = await joinChannel(viewer.client, `space:${spaceA}`)
+    const editorChannel = await joinChannel(editor.client, `space:${spaceA}`)
+    try {
+      expect(await viewerChannel.track({ user_id: viewer.id, name: 'Vi', note_id: noteN1 })).toBe(
+        'ok',
+      )
+      const seen = await eventually(() =>
+        Object.values(ownerChannel?.presenceState() ?? {})
+          .flat()
+          .some((p) => (p as { user_id?: string }).user_id === viewer.id),
+      )
+      expect(seen).toBe(true)
+
+      await viewerChannel.send({ type: 'broadcast', event: 'changed', payload: { by: 'viewer' } })
+      await editorChannel.send({ type: 'broadcast', event: 'changed', payload: { by: 'editor' } })
+      // The editor's message arrives; the viewer's never does.
+      expect(await eventually(() => received.includes('editor'))).toBe(true)
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+      expect(received).not.toContain('viewer')
+    } finally {
+      for (const [client, channel] of [
+        [owner.client, ownerChannel],
+        [viewer.client, viewerChannel],
+        [editor.client, editorChannel],
+      ] as const) {
+        if (channel) await client.removeChannel(channel)
+      }
+    }
   })
 })
 

@@ -1,6 +1,6 @@
-import { FolderPlus, Palette, Pencil, Plus, Trash2 } from 'lucide-react'
+import { FolderPlus, Palette, Pencil, Plus, Share2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { useAuth } from '@/auth/AuthContext'
 import { EmptyState } from '@/components/EmptyState'
 import { PageHeader } from '@/components/PageHeader'
@@ -11,6 +11,8 @@ import { sortItems } from '@/data/tree'
 import { t } from '@/i18n/ro'
 import { foldersScreen } from '@/auth/allowedAccess'
 import { NoAccessState } from '@/features/auth/NoAccessState'
+import { PasteLinkField } from '@/features/share/PasteLinkField'
+import { sharePath } from '@/lib/paths'
 import { useSyncRuntime, useSyncState } from '@/sync/SyncContext'
 import { FolderDialog, type FolderFormValue } from './FolderDialog'
 import { FolderIcon } from './FolderIcon'
@@ -23,6 +25,7 @@ type DialogState = null | { mode: 'create' } | { mode: 'edit'; space: SpaceWithR
 export function FoldersPage() {
   const { allowed } = useAuth()
   const { db, engine, userId } = useSyncRuntime()
+  const navigate = useNavigate()
   const spaces = useSpaces()
   const { lastPullAt } = useSyncState()
   const screen = foldersScreen({
@@ -78,6 +81,11 @@ export function FoldersPage() {
                 label: t.folders.appearance,
                 icon: Palette,
                 onSelect: () => setDialog({ mode: 'edit', space }),
+              },
+              {
+                label: t.share.title,
+                icon: Share2,
+                onSelect: () => void navigate(sharePath(space.id)),
               },
               {
                 label: t.folders.trash,
@@ -140,6 +148,9 @@ export function FoldersPage() {
               </section>
             )}
           </>
+        )}
+        {spaces !== undefined && (
+          <PasteLinkField className="mx-auto mt-10 max-w-md border-t border-line pt-6" />
         )}
       </div>
 

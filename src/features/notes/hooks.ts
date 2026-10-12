@@ -1,6 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useMemo, useState } from 'react'
+import { useAuth } from '@/auth/AuthContext'
 import { pathTo } from '@/data/tree'
+import { readGuestName } from '@/features/share/guestName'
 import { t } from '@/i18n/ro'
 import type { NoteRow } from '@/lib/database.types'
 import { useDb, useSyncRuntime } from '@/sync/SyncContext'
@@ -65,6 +67,32 @@ export function useAuthorName(userId: string | null, spaceId: string): string {
   }, [db, userId, spaceId, me])
   if (userId === me) return t.notes.you
   return name?.trim() || t.notes.someone
+}
+
+/**
+ * The name this user shows to the others in a space: their member name there, their profile
+ * name, the account name, or "altcineva".
+ */
+export function useMyName(spaceId: string): string {
+  const { db, userId } = useSyncRuntime()
+  const { session } = useAuth()
+  const stored = useLiveQuery(async () => {
+    const member = await db.members
+      .where('space_id')
+      .equals(spaceId)
+      .filter((m) => m.user_id === userId)
+      .first()
+    return member?.display_name ?? (await db.profiles.get(userId))?.display_name ?? null
+  }, [db, spaceId, userId])
+  const meta = (session?.user.user_metadata ?? {}) as { full_name?: string; name?: string }
+  return (
+    stored?.trim() ||
+    meta.full_name ||
+    meta.name ||
+    readGuestName() ||
+    session?.user.email?.split('@')[0] ||
+    t.notes.someone
+  )
 }
 
 /** "Folder principal › Subfolder" for any note the account can reach (search and tag lists). */

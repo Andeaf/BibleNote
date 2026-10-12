@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router'
 import { useAuth } from '@/auth/AuthContext'
 import { FullScreenSpinner } from '@/components/FullScreenSpinner'
+import { PasteLinkField } from '@/features/share/PasteLinkField'
 import { t } from '@/i18n/ro'
 
 function GoogleMark() {
@@ -111,6 +112,8 @@ export function LoginPage() {
             {t.auth.signInEmail}
           </button>
         </form>
+
+        <PasteLinkField className="mt-8 border-t border-line pt-6" />
       </div>
     </main>
   )

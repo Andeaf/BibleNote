@@ -19,6 +19,7 @@ import {
   Pin,
   PinOff,
   Plus,
+  Share2,
   Trash2,
   Upload,
 } from 'lucide-react'
@@ -48,9 +49,9 @@ import { RecorderDialog } from '@/features/recorder/RecorderDialog'
 import { TagChip } from '@/features/tags/TagChip'
 import { t } from '@/i18n/ro'
 import type { FileKind, FolderRow, NoteRow } from '@/lib/database.types'
-import { folderPath, notePath } from '@/lib/paths'
+import { folderPath, notePath, sharePath } from '@/lib/paths'
 import { collectTags, tagKey } from '@/lib/tags'
-import { useSyncRuntime } from '@/sync/SyncContext'
+import { useSyncRuntime, useSyncState } from '@/sync/SyncContext'
 import { FolderDialog, type FolderFormValue } from './FolderDialog'
 import { FolderIcon } from './FolderIcon'
 import { canEditRole, useIsDesktop, useSortMode, useSpace, useSpaceFolders } from './hooks'
@@ -86,6 +87,7 @@ export function FolderPage() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const { db, engine, userId } = useSyncRuntime()
+  const { pulling, lastPullAt, online } = useSyncState()
   const space = useSpace(spaceId)
   const folders = useSpaceFolders(spaceId)
   const notes = useSpaceNotes(spaceId)
@@ -121,6 +123,14 @@ export function FolderPage() {
   }
 
   const current = folderId ? folders.find((f) => f.id === folderId) : null
+  // Just entered through a link: the space arrives with the first pull.
+  if (!space && (pulling || (lastPullAt === null && online))) {
+    return (
+      <p role="status" className="px-4 py-10 text-center text-muted">
+        {t.common.loading}
+      </p>
+    )
+  }
   if (!space || (folderId && (!current || current.deleted_at))) {
     return (
       <div className="px-4 py-10">
@@ -340,6 +350,16 @@ export function FolderPage() {
         actions={
           <>
             <SortToggle mode={sort} onChange={setSort} />
+            {!current && space.role === 'owner' && (
+              <Link
+                to={sharePath(spaceId)}
+                className="btn btn-secondary ml-2 hidden size-11 px-0 sm:inline-flex"
+                aria-label={t.share.title}
+                title={t.share.title}
+              >
+                <Share2 className="size-4" aria-hidden="true" />
+              </Link>
+            )}
             {canEdit && (
               <>
                 <div className="ml-1 sm:hidden">
@@ -364,6 +384,15 @@ export function FolderPage() {
                         icon: Mic,
                         onSelect: () => setDialog({ mode: 'record' }),
                       },
+                      ...(!current && space.role === 'owner'
+                        ? [
+                            {
+                              label: t.share.title,
+                              icon: Share2,
+                              onSelect: () => void navigate(sharePath(spaceId)),
+                            },
+                          ]
+                        : []),
                     ]}
                   />
                 </div>

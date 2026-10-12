@@ -1,5 +1,5 @@
-import { ChevronRight, FileText, FolderInput, Pin, Trash2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { ChevronRight, FileText, FolderInput, Pin, Trash2, Users } from 'lucide-react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { Link, NavLink, useNavigate, useParams } from 'react-router'
 import { EmptyState } from '@/components/EmptyState'
 import { PageHeader } from '@/components/PageHeader'
@@ -14,7 +14,7 @@ import { folderPath, notePath } from '@/lib/paths'
 import { collectTags } from '@/lib/tags'
 import { useSyncRuntime } from '@/sync/SyncContext'
 import { NoteEditor } from './editor/NoteEditor'
-import { useAllNotes, useNote } from './hooks'
+import { useAllNotes, useMyName, useNote } from './hooks'
 import { NoteStatus } from './NoteStatus'
 
 /**
@@ -24,10 +24,28 @@ import { NoteStatus } from './NoteStatus'
 export default function NotePage() {
   const { noteId = '' } = useParams()
   const navigate = useNavigate()
-  const { db, engine } = useSyncRuntime()
+  const runtime = useSyncRuntime()
+  const { db, engine, userId } = runtime
   const note = useNote(noteId)
   const spaceId = note?.space_id ?? ''
   const space = useSpace(spaceId)
+  const myName = useMyName(spaceId)
+  const presence = useSyncExternalStore(runtime.presence.subscribe, runtime.presence.get)
+  const editing = canEditRole(space?.role) && !!note && !note.deleted_at
+
+  // "X editează acum": the others in this space see that this note is open for editing here.
+  useEffect(() => {
+    if (!editing || !spaceId) return
+    runtime.setEditing(spaceId, { name: myName, noteId })
+    return () => runtime.setEditing(spaceId, null)
+  }, [runtime, editing, spaceId, noteId, myName])
+  const othersEditing = [
+    ...new Set(
+      (presence[spaceId] ?? [])
+        .filter((entry) => entry.note_id === noteId && entry.user_id !== userId)
+        .map((entry) => entry.name.trim() || t.notes.someone),
+    ),
+  ]
   const folders = useSpaceFolders(spaceId)
   const allNotes = useAllNotes()
   const [sort] = useSortMode()
@@ -170,6 +188,15 @@ export default function NotePage() {
           </nav>
         )}
         <div className="mx-auto w-full max-w-3xl min-w-0">
+          {othersEditing.length > 0 && (
+            <p
+              role="status"
+              className="mt-4 flex items-center gap-2 rounded-xl border border-accent/30 bg-accent-soft px-4 py-2.5 text-sm text-accent"
+            >
+              <Users className="size-4 shrink-0" aria-hidden="true" />
+              {t.share.editingNow(othersEditing.join(', '))}
+            </p>
+          )}
           <NoteEditor
             key={note.id}
             note={note}

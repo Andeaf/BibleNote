@@ -4,7 +4,7 @@ import type { StorageProvider } from '@/lib/storage/StorageProvider'
 import { createSupabaseStorageProvider } from '@/lib/storage/SupabaseStorageProvider'
 import { supabase, supabaseEndpoint } from '@/lib/supabase'
 import { SyncEngine } from './engine'
-import { createRealtimeHub } from './realtime'
+import { createRealtimeHub, type PresenceEntry } from './realtime'
 import { createStore, type Store } from './store'
 import { createSupabaseApi } from './supabaseApi'
 import type { SyncNotice } from './types'
@@ -27,6 +27,10 @@ export interface SyncRuntime {
   /** Shows a notice from the UI (e.g. the editor saved the text as a conflict copy). */
   notify(notice: SyncNotice): void
   dismissNotice(id: number): void
+  /** Who has which note open, per space (Realtime presence). */
+  presence: Store<Record<string, PresenceEntry[]>>
+  /** Tells the others in the space that this user is editing a note; null when they leave it. */
+  setEditing(spaceId: string, editing: { name: string; noteId: string } | null): void
   start(accessToken: string | null): void
   stop(): void
   /**
@@ -67,6 +71,10 @@ export function createSyncRuntime(userId: string): SyncRuntime {
     userId,
     notices,
     notify,
+    presence: hub.presence,
+    setEditing(spaceId, editing) {
+      hub.setPresence(spaceId, editing)
+    },
     dismissNotice(id) {
       notices.set(notices.get().filter((n) => n.id !== id))
     },

@@ -10,6 +10,8 @@ import { FilePage } from './features/files/FilePage'
 import { FolderPage } from './features/folders/FolderPage'
 import { FoldersPage } from './features/folders/FoldersPage'
 import { SearchPage } from './features/search/SearchPage'
+import { JoinPage } from './features/share/JoinPage'
+import { SharePage } from './features/share/SharePage'
 import { SettingsPage } from './features/settings/SettingsPage'
 import { TagNotesPage, TagsPage } from './features/tags/TagsPage'
 
@@ -22,10 +24,13 @@ export function App() {
     <AuthProvider>
       <Routes>
         <Route path="login" element={<LoginPage />} />
+        {/* A share link: works signed out (guest) and signed in, before the app shell. */}
+        <Route path="s/:token" element={<JoinPage />} />
         <Route element={<RequireAuth />}>
           <Route element={<AppShell />}>
             <Route index element={<FoldersPage />} />
             <Route path="f/:spaceId" element={<FolderPage />} />
+            <Route path="f/:spaceId/share" element={<SharePage />} />
             <Route path="f/:spaceId/:folderId" element={<FolderPage />} />
             <Route
               path="n/:noteId"
