@@ -287,8 +287,10 @@ export const BOOKS: readonly BookInfo[] = [
     id: 'ACT',
     name: 'Faptele apostolilor',
     names: ['Faptele apostolilor', 'Faptele'],
-    abbreviations: ['Fapte', 'Fap'],
-    titleCase: ['Fapte'],
+    // "Fapt." is the form of the Cornilescu editions with cross-references. With a capital only:
+    // "de fapt 10:30" ("in fact, 10:30") must stay text.
+    abbreviations: ['Fapte', 'Fapt', 'Fap'],
+    titleCase: ['Fapte', 'Fapt'],
     chapterLinks: true,
   },
   { id: 'ROM', name: 'Romani', names: ['Romani'], abbreviations: ['Rom'], chapterLinks: true },

@@ -156,6 +156,16 @@ describe('Romanian forms and abbreviations', () => {
     expect(refs('fapte 2:38')).toEqual([])
     expect(refs('iOS 17.2 și IOS 16.4')).toEqual([])
   })
+
+  it('"Fapt." of the editions with cross-references, but never "de fapt"', () => {
+    expect(refs('Fapt. 2:38')).toEqual([['Fapt. 2:38', 'Faptele apostolilor 2:38']])
+    expect(refs('vezi Fapt.2:38 și Fapt 4:12')).toEqual([
+      ['Fapt.2:38', 'Faptele apostolilor 2:38'],
+      ['Fapt 4:12', 'Faptele apostolilor 4:12'],
+    ])
+    expect(refs('Ne vedem de fapt 10:30, de fapt. 10:30 sau FAPT. 2:38')).toEqual([])
+    expect(refs('Fapt. 2')).toEqual([])
+  })
 })
 
 describe('separators, ranges and lists', () => {
