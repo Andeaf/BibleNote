@@ -1,7 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/database.types'
-import { ApiError } from '@/sync/types'
-import { SIGNED_URL_SECONDS, type StorageProvider } from './StorageProvider'
+import { ApiError, type StoredObject } from '@/sync/types'
+import {
+  LIST_PAGE_SIZE,
+  REMOVE_BATCH_SIZE,
+  SIGNED_URL_SECONDS,
+  type StorageProvider,
+} from './StorageProvider'
 
 const BUCKET = 'files'
 
@@ -129,9 +134,38 @@ export function createSupabaseStorageProvider(
     },
 
     async remove(paths) {
-      if (paths.length === 0) return
-      const { error } = await bucket().remove(paths)
-      if (error) throw toStorageApiError(error)
+      for (let i = 0; i < paths.length; i += REMOVE_BATCH_SIZE) {
+        const { error } = await bucket().remove(paths.slice(i, i + REMOVE_BATCH_SIZE))
+        if (error) throw toStorageApiError(error)
+      }
+    },
+
+    async list(prefix) {
+      const objects: StoredObject[] = []
+      for (let offset = 0; ; offset += LIST_PAGE_SIZE) {
+        const { data, error } = await bucket().list(prefix, {
+          limit: LIST_PAGE_SIZE,
+          offset,
+          sortBy: { column: 'name', order: 'asc' },
+        })
+        if (error) throw toStorageApiError(error)
+        for (const item of data) {
+          // Folder placeholders have no id; a path has exactly one level under the space.
+          if (item.id && item.created_at) {
+            objects.push({ path: `${prefix}/${item.name}`, createdAt: item.created_at })
+          }
+        }
+        if (data.length < LIST_PAGE_SIZE) return objects
+      }
+    },
+
+    async exists(path) {
+      try {
+        const { data } = await bucket().exists(path)
+        return data
+      } catch (error) {
+        throw toStorageApiError(error as StorageFailure)
+      }
     },
 
     async usage() {

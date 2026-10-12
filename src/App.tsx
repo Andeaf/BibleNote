@@ -15,6 +15,7 @@ import { SharePage } from './features/share/SharePage'
 import { AboutPage } from './features/settings/AboutPage'
 import { SettingsPage } from './features/settings/SettingsPage'
 import { TagNotesPage, TagsPage } from './features/tags/TagsPage'
+import { TrashPage } from './features/trash/TrashPage'
 
 // The editor (Tiptap, ProseMirror) is a separate chunk, loaded when a note is opened and
 // precached by the service worker, so it works offline too.
@@ -47,6 +48,7 @@ export function App() {
             <Route path="tags/:tag" element={<TagNotesPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="about" element={<AboutPage />} />
+            <Route path="trash" element={<TrashPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Route>

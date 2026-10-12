@@ -170,7 +170,7 @@ describe('1. the Storage object first, then the row', () => {
 
     await flush()
     expect(fileCalls()).toEqual(['uploadObject', 'insert'])
-    expect(api.objects.get(`${SPACE}/${file.id}`)).toEqual({ size: 10, type: 'audio/webm' })
+    expect(api.objects.get(`${SPACE}/${file.id}`)).toMatchObject({ size: 10, type: 'audio/webm' })
     expect(api.tables.files.get(file.id)).toMatchObject({
       name: 'Predica',
       storage_path: `${SPACE}/${file.id}`,

@@ -49,7 +49,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // App shell, fonts, the pdf.js worker (.mjs) and (from phase 5) the Bible JSON are
+        // App shell, fonts, the pdf.js worker (.mjs) and the Bible JSON (public/bible) are
         // precached. Supabase requests are never cached: there is no runtimeCaching entry;
         // files opened offline come from the app's own IndexedDB cache.
         globPatterns: ['**/*.{js,mjs,css,html,svg,png,woff2,json}'],

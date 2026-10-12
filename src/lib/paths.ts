@@ -14,5 +14,7 @@ export const settingsPath = '/settings'
 
 export const aboutPath = '/about'
 
+export const trashPath = '/trash'
+
 /** A share link inside the app (the token never stays in the history, see JoinPage). */
 export const joinPath = (token: string): string => `/s/${token}`

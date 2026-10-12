@@ -115,3 +115,7 @@ export async function moveFile(
 export async function trashFile(db: BibleNoteDb, fileId: string): Promise<boolean> {
   return updateFile(db, fileId, { deleted_at: nowIso() })
 }
+
+export async function restoreFile(db: BibleNoteDb, fileId: string): Promise<boolean> {
+  return updateFile(db, fileId, { deleted_at: null })
+}

@@ -214,6 +214,20 @@ export async function trashNoteRow(db: BibleNoteDb, note: NoteRow, stamp: string
   await enqueueNote(db, { ...note, deleted_at: stamp }, 'update', { deleted_at: stamp })
 }
 
+/** Takes a note out of the trash (call inside a transaction on notes + outbox). */
+export async function restoreNoteRow(db: BibleNoteDb, note: NoteRow): Promise<void> {
+  if (!note.deleted_at) return
+  await db.notes.update(note.id, { deleted_at: null })
+  await enqueueNote(db, { ...note, deleted_at: null }, 'update', { deleted_at: null })
+}
+
+export async function restoreNote(db: BibleNoteDb, noteId: string): Promise<void> {
+  await db.transaction('rw', [db.notes, db.outbox], async () => {
+    const note = await db.notes.get(noteId)
+    if (note) await restoreNoteRow(db, note)
+  })
+}
+
 export async function trashNote(db: BibleNoteDb, noteId: string): Promise<void> {
   await db.transaction('rw', [db.notes, db.outbox], async () => {
     const note = await db.notes.get(noteId)

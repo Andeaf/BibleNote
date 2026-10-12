@@ -1,13 +1,16 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { useAuth } from '@/auth/AuthContext'
 import { PageHeader } from '@/components/PageHeader'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { t } from '@/i18n/ro'
-import { aboutPath } from '@/lib/paths'
+import { aboutPath, trashPath } from '@/lib/paths'
 import { useSyncRuntime } from '@/sync/SyncContext'
+import { ExportSection } from '@/features/export/ExportSection'
+import { InstallSection } from '@/features/install/Install'
+import { AppearanceSection } from './Appearance'
 import { StorageSection } from './StorageSection'
 import { UnsyncedList } from './UnsyncedList'
 
@@ -63,10 +66,27 @@ export function SettingsPage() {
           </div>
         </div>
 
+        <AppearanceSection />
+
+        <Link
+          to={trashPath}
+          className="mt-6 flex min-h-12 items-center justify-between gap-4 rounded-xl border border-line bg-surface px-4 py-2 text-sm hover:bg-canvas"
+        >
+          <span className="flex items-center gap-3">
+            <Trash2 className="size-4 text-muted" aria-hidden="true" />
+            {t.trash.title}
+          </span>
+          <ChevronRight className="size-4 text-muted" aria-hidden="true" />
+        </Link>
+
         <h2 className="mt-6 mb-2 text-sm font-medium text-muted">{t.settings.unsynced}</h2>
         <UnsyncedList onMessage={setMessage} />
 
         <StorageSection />
+
+        <ExportSection />
+
+        <InstallSection />
 
         <dl className="mt-6 divide-y divide-line rounded-xl border border-line bg-surface">
           <div className="flex min-h-12 items-center justify-between gap-4 px-4 py-2">

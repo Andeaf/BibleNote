@@ -194,9 +194,10 @@ export class TransferLane {
       await db.outbox.update(
         seq,
         found.status === 'failed'
-          ? { uploaded: true }
+          ? { uploaded: true, uploaded_at: this.deps.now() }
           : {
               uploaded: true,
+              uploaded_at: this.deps.now(),
               transfer_failures: 0,
               next_transfer_at: 0,
               attempts: 0,

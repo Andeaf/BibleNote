@@ -6,6 +6,7 @@
  * exercises every cell of the access matrix and deletes everything it created.
  * Tests run in file order; destructive ones (disable/regenerate links) come last. Phase 4 adds
  * the sharing flows: guests through links, roles that never go down, removing people, presence.
+ * Phase 6 adds the trash: trashed_at set by the server only, purge_expired, purged paths, listing.
  */
 import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -904,6 +905,174 @@ describe('sharing (phase 4)', () => {
         if (channel) await client.removeChannel(channel)
       }
     }
+  })
+})
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/** A note in space A, already in the trash. */
+async function trashedNote(title: string): Promise<string> {
+  const id = crypto.randomUUID()
+  must(
+    await editor.client.rpc('save_note', {
+      p_note: { id, space_id: spaceA, title },
+      p_base_version: null,
+    }),
+  )
+  must(
+    await editor.client
+      .from('notes')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
+      .select(),
+  )
+  return id
+}
+
+/** A file in space A (object and row) uploaded by the owner. */
+async function ownerFile(folderId: string | null = null): Promise<{ id: string; path: string }> {
+  const id = crypto.randomUUID()
+  const path = `${spaceA}/${id}`
+  cleanup.paths.push(path)
+  ok(await owner.client.storage.from('files').upload(path, new Blob(['x']), { upsert: false }))
+  must(
+    await owner.client
+      .from('files')
+      .insert({
+        id,
+        space_id: spaceA,
+        folder_id: folderId,
+        name: 'F',
+        kind: 'document',
+        mime: 'text/plain',
+        size_bytes: 1,
+        storage_path: path,
+        created_by: owner.id,
+      })
+      .select(),
+  )
+  return { id, path }
+}
+
+describe('trash (phase 6)', () => {
+  it("trashed_at is the server's time, whatever deleted_at says; clients cannot set it", async () => {
+    const folderId = crypto.randomUUID()
+    must(
+      await editor.client
+        .from('folders')
+        .insert({ id: folderId, space_id: spaceA, name: 'T', created_by: editor.id })
+        .select(),
+    )
+    const yearAgo = new Date(Date.now() - 365 * DAY_MS).toISOString()
+    const [row] = must(
+      await editor.client
+        .from('folders')
+        .update({ deleted_at: yearAgo, updated_by: editor.id })
+        .eq('id', folderId)
+        .select('deleted_at, trashed_at'),
+    )
+    expect(Date.parse(row?.deleted_at ?? '')).toBe(Date.parse(yearAgo))
+    expect(Math.abs(Date.parse(row?.trashed_at ?? '') - Date.now())).toBeLessThan(10 * 60_000)
+
+    // A column privilege, not the update policy: the same update without it goes through.
+    for (const user of [editor, owner]) {
+      const direct = await user.client
+        .from('folders')
+        .update({ trashed_at: yearAgo, updated_by: user.id } as never)
+        .eq('id', folderId)
+        .select()
+      expect(direct.error?.message).toContain('permission denied')
+      must(
+        await user.client
+          .from('folders')
+          .update({ updated_by: user.id })
+          .eq('id', folderId)
+          .select(),
+      )
+    }
+    const [restored] = must(
+      await editor.client
+        .from('folders')
+        .update({ deleted_at: null, updated_by: editor.id })
+        .eq('id', folderId)
+        .select('trashed_at'),
+    )
+    expect(restored?.trashed_at).toBeNull()
+  })
+
+  it("purge_expired empties only the caller's own items, 30 days after trashed_at", async () => {
+    const old = await trashedNote('Old')
+    const recent = await trashedNote('Recent')
+    // Thirty-one days in the trash, as only the service role can write it.
+    must(
+      await admin
+        .from('notes')
+        .update({ trashed_at: new Date(Date.now() - 31 * DAY_MS).toISOString() } as never)
+        .eq('id', old)
+        .select(),
+    )
+
+    for (const client of [editor.client, viewer.client, stranger.client]) {
+      const result = must(await client.rpc('purge_expired')) as { purged: number }
+      expect(result.purged).toBe(0)
+    }
+    expect(
+      must(await admin.from('notes').select('purged_at').eq('id', old).single()).purged_at,
+    ).toBeNull()
+
+    const result = must(await owner.client.rpc('purge_expired')) as { purged: number }
+    expect(result.purged).toBe(1)
+    const rows = must(await admin.from('notes').select('id, purged_at').in('id', [old, recent]))
+    expect(rows.find((r) => r.id === old)?.purged_at).not.toBeNull()
+    expect(rows.find((r) => r.id === recent)?.purged_at).toBeNull()
+  })
+
+  it('purge_items lists the objects of the files it purged, also through a folder', async () => {
+    const folderId = crypto.randomUUID()
+    must(
+      await owner.client
+        .from('folders')
+        .insert({ id: folderId, space_id: spaceA, name: 'P', created_by: owner.id })
+        .select(),
+    )
+    const loose = await ownerFile()
+    const inside = await ownerFile(folderId)
+    const stamp = new Date().toISOString()
+    must(await owner.client.from('files').update({ deleted_at: stamp }).eq('id', loose.id).select())
+    must(
+      await owner.client
+        .from('folders')
+        .update({ deleted_at: stamp, updated_by: owner.id })
+        .eq('id', folderId)
+        .select(),
+    )
+
+    const result = must(await owner.client.rpc('purge_items', { p_ids: [loose.id, folderId] })) as {
+      purged: number
+      paths: string[]
+    }
+    expect(result.purged).toBe(2)
+    expect([...result.paths].sort()).toEqual([loose.path, inside.path].sort())
+    ok(await owner.client.storage.from('files').remove(result.paths))
+  })
+
+  it("the owner lists a space's objects page by page, with their creation time", async () => {
+    const files = [await ownerFile(), await ownerFile(), await ownerFile()]
+    const names = new Set(files.map((f) => f.id))
+    const seen: { name: string; created_at: string | null }[] = []
+    for (let offset = 0; ; offset += 2) {
+      const page = must(
+        await owner.client.storage
+          .from('files')
+          .list(spaceA, { limit: 2, offset, sortBy: { column: 'name', order: 'asc' } }),
+      )
+      seen.push(...page)
+      if (page.length < 2) break
+    }
+    const ours = seen.filter((o) => names.has(o.name))
+    expect(ours).toHaveLength(3)
+    expect(ours.every((o) => o.created_at !== null)).toBe(true)
+    expect(must(await stranger.client.storage.from('files').list(spaceA))).toEqual([])
   })
 })
 

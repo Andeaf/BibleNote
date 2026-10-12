@@ -1,4 +1,4 @@
-import { ChevronRight, FileText, FolderInput, Pin, Trash2, Users } from 'lucide-react'
+import { ChevronRight, FileText, FolderInput, Pin, Printer, Trash2, Users } from 'lucide-react'
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { Link, NavLink, useNavigate, useParams } from 'react-router'
 import { EmptyState } from '@/components/EmptyState'
@@ -91,6 +91,18 @@ export default function NotePage() {
     if (note && (await moveNote(db, note.id, target))) engine.requestPush()
   }
 
+  /** "Printează / Salvează ca PDF": only the title and the text (print CSS); the title names the PDF. */
+  function print() {
+    const previous = document.title
+    const restore = () => {
+      document.title = previous
+      window.removeEventListener('afterprint', restore)
+    }
+    document.title = title
+    window.addEventListener('afterprint', restore)
+    window.print()
+  }
+
   async function confirmTrash() {
     if (!note) return
     await trashNote(db, note.id)
@@ -133,8 +145,8 @@ export default function NotePage() {
         above={breadcrumb}
         status={<NoteStatus noteId={note.id} dirty={dirty} readOnly={!canEdit} />}
         actions={
-          canEdit && (
-            <>
+          <>
+            {canEdit && (
               <button
                 type="button"
                 onClick={() => void togglePin()}
@@ -147,26 +159,34 @@ export default function NotePage() {
               >
                 <Pin className={`size-5 ${note.pinned ? 'fill-current' : ''}`} aria-hidden="true" />
               </button>
-              <Menu
-                label={`${t.common.menu}: ${title}`}
-                items={[
-                  { label: t.notes.move, icon: FolderInput, onSelect: () => setDialog('move') },
-                  {
-                    label: t.notes.trash,
-                    icon: Trash2,
-                    destructive: true,
-                    onSelect: () => setDialog('trash'),
-                  },
-                ]}
-              />
-            </>
-          )
+            )}
+            <Menu
+              label={`${t.common.menu}: ${title}`}
+              items={[
+                { label: t.notes.print, icon: Printer, onSelect: print },
+                ...(canEdit
+                  ? [
+                      { label: t.notes.move, icon: FolderInput, onSelect: () => setDialog('move') },
+                      {
+                        label: t.notes.trash,
+                        icon: Trash2,
+                        destructive: true,
+                        onSelect: () => setDialog('trash'),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+          </>
         }
       />
 
       <div className="mx-auto flex max-w-6xl gap-6 px-4 lg:px-6">
         {siblings.length > 1 && (
-          <nav aria-label={t.notes.inFolder} className="hidden w-64 shrink-0 pt-4 xl:block">
+          <nav
+            aria-label={t.notes.inFolder}
+            className="hidden w-64 shrink-0 pt-4 xl:block print:hidden"
+          >
             <ul className="sticky top-4 flex max-h-[calc(100dvh-8rem)] flex-col gap-0.5 overflow-y-auto">
               {siblings.map((sibling) => (
                 <li key={sibling.id}>
@@ -191,7 +211,7 @@ export default function NotePage() {
           {othersEditing.length > 0 && (
             <p
               role="status"
-              className="mt-4 flex items-center gap-2 rounded-xl border border-accent/30 bg-accent-soft px-4 py-2.5 text-sm text-accent"
+              className="mt-4 flex items-center gap-2 rounded-xl border border-accent/30 bg-accent-soft px-4 py-2.5 text-sm text-accent print:hidden"
             >
               <Users className="size-4 shrink-0" aria-hidden="true" />
               {t.share.editingNow(othersEditing.join(', '))}

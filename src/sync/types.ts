@@ -3,8 +3,12 @@ import type { SpaceRole } from '@/lib/database.types'
 /** Server tables the sync engine pulls. `space_members` is stored locally as `members`. */
 export type ServerTable = 'spaces' | 'folders' | 'notes' | 'files' | 'space_members' | 'profiles'
 
-/** Tables the client writes to (note content through the save_note RPC, the rest directly). */
-export type WritableTable = 'spaces' | 'folders' | 'notes' | 'files'
+/**
+ * Tables the client writes to (note content through the save_note RPC, the rest directly).
+ * `profiles`: only the own row's `settings` (theme, text size), never inserted; its entries
+ * have no space (`space_id` '').
+ */
+export type WritableTable = 'spaces' | 'folders' | 'notes' | 'files' | 'profiles'
 
 /**
  * `insert` / `update`: direct writes (for notes `update` is update_note_meta: folder_id, pinned,
@@ -46,6 +50,25 @@ export interface OutboxEntry {
   transfer_failures?: number
   /** upload only: the transfer waits until then (engine clock, ms). */
   next_transfer_at?: number
+  /**
+   * upload only: when the object was last confirmed (engine clock, ms). A row that waited so long
+   * that the owner's sweep may have removed the object as an orphan checks it again first.
+   */
+  uploaded_at?: number
+}
+
+/** A Storage object as listed: its path and when it was stored (server time, ISO). */
+export interface StoredObject {
+  path: string
+  createdAt: string
+}
+
+/** What purge_items and purge_expired answer (docs/PLAN.md §5.8). */
+export interface PurgeResult {
+  purged: number
+  skipped: string[]
+  /** The Storage objects of the file rows purged (directly, or with a folder or a space). */
+  paths: string[]
 }
 
 /** Progress and cancellation of one file transfer. */
@@ -121,8 +144,19 @@ export interface SyncApi {
     contentType: string,
     options?: TransferOptions,
   ): Promise<void>
+  /** Whether the object at `path` still exists. */
+  objectExists(path: string): Promise<boolean>
+  /** Every object of a space ('{space_id}' prefix), all pages. */
+  listObjects(spaceId: string): Promise<StoredObject[]>
+  removeObjects(paths: string[]): Promise<void>
   /** The save_note RPC: inserts a new note, or updates the content when the version matches. */
   saveNote(note: Record<string, unknown>, baseVersion: number | null): Promise<SaveNoteResponse>
+  /** purge_items: permanent deletion of trashed items, by the owner of their space. */
+  purgeItems(ids: string[]): Promise<PurgeResult>
+  /** purge_expired: what has been in the caller's own trash for 30 days, chosen by the server. */
+  purgeExpired(): Promise<PurgeResult>
+  /** The server's clock (ISO), which also dates the Storage objects. */
+  serverTime(): Promise<string>
   touchPresence(): Promise<void>
   /** Refreshes the session after a 401 (expired token). */
   refreshAuth(): Promise<void>

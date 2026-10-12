@@ -1,4 +1,4 @@
-import type { TransferOptions } from '@/sync/types'
+import type { StoredObject, TransferOptions } from '@/sync/types'
 
 /**
  * Where file contents live. Only src/lib/storage/ talks to Supabase Storage; everything else
@@ -14,8 +14,15 @@ export interface StorageProvider {
   /** A temporary URL (1 h) to read the object; with `downloadAs` the browser saves it. */
   getUrl(path: string, downloadAs?: string): Promise<string>
   remove(paths: string[]): Promise<void>
+  /** Every object directly under `prefix` ('{space_id}'), all pages read. */
+  list(prefix: string): Promise<StoredObject[]>
+  /** Whether an object is stored at `path`. */
+  exists(path: string): Promise<boolean>
   /** Bytes used by all files of the project (the free plan has 1 GB in total). */
   usage(): Promise<number>
 }
 
 export const SIGNED_URL_SECONDS = 60 * 60
+/** Objects per page when listing, and per request when removing. */
+export const LIST_PAGE_SIZE = 1000
+export const REMOVE_BATCH_SIZE = 100

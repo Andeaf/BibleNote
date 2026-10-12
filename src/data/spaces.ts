@@ -76,3 +76,8 @@ export async function updateSpace(
 export async function trashSpace(db: BibleNoteDb, spaceId: string): Promise<void> {
   await updateSpace(db, spaceId, { deleted_at: nowIso() })
 }
+
+/** Owner only. The members see it again with the next pull. */
+export async function restoreSpace(db: BibleNoteDb, spaceId: string): Promise<void> {
+  await updateSpace(db, spaceId, { deleted_at: null })
+}

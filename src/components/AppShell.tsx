@@ -1,8 +1,10 @@
-import { FolderOpen, Search, Settings, Tag } from 'lucide-react'
+import { FolderOpen, Search, Settings, Tag, Trash2 } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
 import { FolderTree } from '@/features/folders/FolderTree'
 import { RecordingRecovery } from '@/features/recorder/RecordingRecovery'
+import { AppearanceSync } from '@/features/settings/Appearance'
 import { t } from '@/i18n/ro'
+import { trashPath } from '@/lib/paths'
 import { SyncIndicator } from './SyncIndicator'
 import { Toaster } from './Toaster'
 
@@ -20,7 +22,7 @@ const navItems = [
 export function AppShell() {
   return (
     <div className="min-h-dvh lg:flex">
-      <aside className="hidden border-r border-line bg-surface lg:sticky lg:top-0 lg:flex lg:h-dvh lg:w-72 lg:flex-col">
+      <aside className="hidden border-r border-line bg-surface lg:sticky lg:top-0 lg:flex lg:h-dvh lg:w-72 lg:flex-col print:hidden">
         <div className="px-5 py-4">
           <span className="text-lg font-semibold tracking-tight">{t.app.name}</span>
         </div>
@@ -46,6 +48,17 @@ export function AppShell() {
         <div className="mt-4 min-h-0 flex-1 overflow-y-auto border-t border-line pt-3">
           <FolderTree />
         </div>
+        <NavLink
+          to={trashPath}
+          className={({ isActive }) =>
+            `mx-3 mb-2 flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium ${
+              isActive ? 'bg-accent-soft text-accent' : 'text-muted hover:bg-canvas hover:text-ink'
+            }`
+          }
+        >
+          <Trash2 className="size-5" aria-hidden="true" />
+          {t.trash.title}
+        </NavLink>
         <div className="border-t border-line">
           <SyncIndicator variant="bar" />
         </div>
@@ -57,10 +70,11 @@ export function AppShell() {
 
       <Toaster />
       <RecordingRecovery />
+      <AppearanceSync />
 
       <nav
         aria-label={t.nav.main}
-        className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden print:hidden"
       >
         <ul className="grid grid-cols-4">
           {navItems.map(({ to, label, icon: Icon, end }) => (

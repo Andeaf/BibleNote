@@ -2,7 +2,7 @@ import type { FolderRow } from '@/lib/database.types'
 import type { BibleNoteDb } from '@/lib/db'
 import { newId, nowIso } from '@/lib/ids'
 import { enqueue } from '@/sync/outbox'
-import { trashNoteRow } from './notes'
+import { restoreNoteRow, trashNoteRow } from './notes'
 import { descendantIds, isSelfOrDescendant } from './tree'
 
 export interface FolderInput {
@@ -106,6 +106,56 @@ export async function moveFolder(
       payload: { parent_id: targetParentId, updated_by: userId },
     })
     return true
+  })
+}
+
+/** The same moment, whatever the format (local ISO or the server's timestamptz text). */
+const sameMoment = (a: string | null, b: string | null) =>
+  a !== null && b !== null && Date.parse(a) === Date.parse(b)
+
+/**
+ * Takes a folder out of the trash with everything that went in with it (the same deleted_at,
+ * docs/PLAN.md §2). An item of its subtree trashed separately, earlier, stays in the trash.
+ */
+export async function restoreFolder(
+  db: BibleNoteDb,
+  userId: string,
+  folderId: string,
+): Promise<void> {
+  await db.transaction('rw', [db.folders, db.notes, db.files, db.outbox], async () => {
+    const folder = await db.folders.get(folderId)
+    if (!folder?.deleted_at) return
+    const stamp = folder.deleted_at
+    const all = await db.folders.where('space_id').equals(folder.space_id).toArray()
+    const folderIds = [folderId, ...descendantIds(all, folderId)]
+    for (const id of folderIds) {
+      const row = all.find((f) => f.id === id)
+      if (!row || !sameMoment(row.deleted_at, stamp)) continue
+      await db.folders.update(id, { deleted_at: null, updated_by: userId })
+      await enqueue(db, {
+        table: 'folders',
+        row_id: id,
+        space_id: folder.space_id,
+        op: 'update',
+        payload: { deleted_at: null, updated_by: userId },
+      })
+    }
+    const notes = await db.notes.where('folder_id').anyOf(folderIds).toArray()
+    for (const note of notes) {
+      if (sameMoment(note.deleted_at, stamp)) await restoreNoteRow(db, note)
+    }
+    const files = await db.files.where('folder_id').anyOf(folderIds).toArray()
+    for (const file of files) {
+      if (!sameMoment(file.deleted_at, stamp)) continue
+      await db.files.update(file.id, { deleted_at: null })
+      await enqueue(db, {
+        table: 'files',
+        row_id: file.id,
+        space_id: folder.space_id,
+        op: 'update',
+        payload: { deleted_at: null },
+      })
+    }
   })
 }
 

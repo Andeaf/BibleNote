@@ -10,6 +10,12 @@ import {
   pickColumns,
 } from './columns'
 import { conflictCopy, conflictKey, localDisplayName } from './conflicts'
+import {
+  HOUSEKEEPING_AT_KEY,
+  HOUSEKEEPING_INTERVAL_MS,
+  removePurgedObjects,
+  runHousekeeping,
+} from './housekeeping'
 import { createsRow, enqueue, outboxKey, unsentCreateKeys } from './outbox'
 import { createStore, type Store } from './store'
 import { TransferLane } from './transfers'
@@ -18,6 +24,7 @@ import {
   type AnyRow,
   type OutboxEntry,
   type PullPage,
+  type PurgeResult,
   type ServerTable,
   type SyncApi,
   type SyncNotice,
@@ -28,6 +35,12 @@ import {
 export const PAGE_SIZE = 500
 export const OVERLAP_MS = 30_000
 export const MAX_ATTEMPTS = 5
+/**
+ * A file row about to be inserted whose object was confirmed longer ago than this checks that
+ * the object is still there: the owner's sweep removes objects without a row after 30 days, and
+ * the blob must not become evictable cache while the row points at nothing (§4.6d, rev. 15).
+ */
+export const OBJECT_RECHECK_MS = 7 * 24 * 60 * 60 * 1000
 const PULL_CURSOR_KEY = 'pull_cursor'
 const PULLED_TABLES: ServerTable[] = [
   'spaces',
@@ -67,6 +80,8 @@ type PushOutcome =
   | { type: 'convert_to_update'; baseVersion?: number }
   | { type: 'conflict'; row: AnyRow }
   | { type: 'gone' }
+  /** upload: the object it confirmed long ago is gone; the transfer lane sends it again. */
+  | { type: 'reupload' }
 
 /** Error of changes kept after the access to their main folder was lost. */
 export const ACCESS_LOST = 'BN_ACCESS_LOST'
@@ -100,6 +115,8 @@ export class SyncEngine {
   /** When the retry timer will fire (engine clock), or null. Exposed for tests. */
   nextRetryAt: number | null = null
   private recovered = false
+  /** The owner's cleanup in progress (at most one at a time). */
+  private housekeeping: Promise<void> | null = null
   private readonly deps: EngineDeps
   private readonly now: () => number
   private readonly setTimer: (fn: () => void, ms: number) => unknown
@@ -252,7 +269,8 @@ export class SyncEngine {
   /** The space and parent folder this entry points at, as outbox keys. */
   private dependenciesOf(entry: OutboxEntry): string[] {
     const deps: string[] = []
-    if (entry.table !== 'spaces') deps.push(outboxKey('spaces', entry.space_id))
+    // Profile entries have no space.
+    if (entry.table !== 'spaces' && entry.space_id) deps.push(outboxKey('spaces', entry.space_id))
     const column = PARENT_COLUMN[entry.table]
     const parent = column ? entry.payload[column] : null
     if (typeof parent === 'string') deps.push(outboxKey('folders', parent))
@@ -301,7 +319,7 @@ export class SyncEngine {
         case 'success':
           await this.afterSuccess(entry, outcome.row)
           if (createsRow(entry)) unsentInserts.delete(key)
-          touchedSpaces.add(entry.space_id)
+          if (entry.space_id) touchedSpaces.add(entry.space_id)
           succeeded = true
           this.state.update({ online: true })
           break
@@ -368,6 +386,15 @@ export class SyncEngine {
         case 'gone':
           await this.dropGone(entry)
           blocked.add(key)
+          break
+        case 'reupload':
+          await db.outbox.update(seq, {
+            status: 'pending',
+            uploaded: false,
+            uploaded_at: undefined,
+          })
+          blocked.add(key)
+          void this.transfers.run()
           break
       }
     }
@@ -443,6 +470,10 @@ export class SyncEngine {
    * so no device ever sees a row whose file does not exist yet. A 23505 continues as an update.
    */
   private async sendUpload(entry: OutboxEntry): Promise<PushOutcome> {
+    if (this.now() - (entry.uploaded_at ?? 0) > OBJECT_RECHECK_MS) {
+      const exists = await this.deps.api.objectExists(String(entry.payload.storage_path))
+      if (!exists) return { type: 'reupload' }
+    }
     const row = await this.deps.api.insert(
       'files',
       pickColumns(entry.payload, INSERT_COLUMNS.files),
@@ -670,6 +701,54 @@ export class SyncEngine {
   }
 
   // ---------------------------------------------------------------------------------------------
+  // Trash: permanent deletion and the owner's cleanup (docs/PLAN.md §5.8)
+  // ---------------------------------------------------------------------------------------------
+
+  /**
+   * "Șterge definitiv" / "Golește coșul" (owner, online only; throws when offline). Local moves to
+   * the trash reach the server first; the server purges only what is in its trash and owned by
+   * the caller (the rest comes back in `skipped`); the objects of the purged files are removed
+   * (a removal cut short is finished by the next cleanup); a pull brings the tombstones.
+   */
+  async purge(ids: string[]): Promise<PurgeResult> {
+    await this.push()
+    const result = await this.deps.api.purgeItems(ids)
+    await removePurgedObjects(this.deps, result.paths).catch(() => undefined)
+    await this.pull()
+    return result
+  }
+
+  /**
+   * The owner's cleanup: the 30-day emptying (decided by the server) and the orphan sweep. Called
+   * after every successful pull of this engine, so never on the strength of a local copy that
+   * was not refreshed in this session; runs at most hourly and never twice at once. Failures are
+   * left for the next run.
+   */
+  private housekeep(): Promise<void> {
+    if (this.housekeeping) return this.housekeeping
+    this.housekeeping = (async () => {
+      const { db } = this.deps
+      const owned = (await db.spaceAccess.toArray())
+        .filter((access) => access.role === 'owner')
+        .map((access) => access.space_id)
+      if (owned.length === 0) return
+      const last = Number((await db.meta.get(HOUSEKEEPING_AT_KEY))?.value ?? 0)
+      if (this.now() - last < HOUSEKEEPING_INTERVAL_MS) return
+      await runHousekeeping({ db, api: this.deps.api, now: this.now }, owned)
+    })()
+      .catch(() => undefined)
+      .finally(() => {
+        this.housekeeping = null
+      })
+    return this.housekeeping
+  }
+
+  /** The cleanup in progress, if any (for tests). */
+  get housekeepingRun(): Promise<void> | null {
+    return this.housekeeping
+  }
+
+  // ---------------------------------------------------------------------------------------------
   // Pull
   // ---------------------------------------------------------------------------------------------
 
@@ -693,6 +772,8 @@ export class SyncEngine {
         await this.pullOnce()
       } while (this.pullAgain)
       this.state.update({ online: true, lastPullAt: this.now(), lastError: null })
+      // Only after a pull that succeeded in this session (docs/PLAN.md §5.8, rev. 15).
+      void this.housekeep()
     } catch (error) {
       if (error instanceof ApiError && error.kind === 'network') {
         this.state.update({ online: false })

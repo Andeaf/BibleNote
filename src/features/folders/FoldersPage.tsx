@@ -11,8 +11,9 @@ import { sortItems } from '@/data/tree'
 import { t } from '@/i18n/ro'
 import { foldersScreen } from '@/auth/allowedAccess'
 import { NoAccessState } from '@/features/auth/NoAccessState'
+import { IosInstallBanner } from '@/features/install/Install'
 import { PasteLinkField } from '@/features/share/PasteLinkField'
-import { sharePath } from '@/lib/paths'
+import { sharePath, trashPath } from '@/lib/paths'
 import { useSyncRuntime, useSyncState } from '@/sync/SyncContext'
 import { FolderDialog, type FolderFormValue } from './FolderDialog'
 import { FolderIcon } from './FolderIcon'
@@ -123,6 +124,7 @@ export function FoldersPage() {
       />
 
       <div className="mx-auto max-w-4xl px-4 py-4 lg:px-6">
+        <IosInstallBanner className="mb-4" />
         {spaces === undefined ? null : screen === 'no_access' ? (
           <NoAccessState />
         ) : screen !== 'list' ? (
@@ -150,7 +152,17 @@ export function FoldersPage() {
           </>
         )}
         {spaces !== undefined && (
-          <PasteLinkField className="mx-auto mt-10 max-w-md border-t border-line pt-6" />
+          <>
+            {/* On phones the trash has no place in the bottom bar: it lives here and in Settings. */}
+            <Link
+              to={trashPath}
+              className="mx-auto mt-8 flex min-h-11 w-fit items-center gap-2 rounded-lg px-3 text-sm text-muted hover:text-ink lg:hidden"
+            >
+              <Trash2 className="size-4" aria-hidden="true" />
+              {t.trash.title}
+            </Link>
+            <PasteLinkField className="mx-auto mt-6 max-w-md border-t border-line pt-6" />
+          </>
         )}
       </div>
 

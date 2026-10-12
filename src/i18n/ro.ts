@@ -127,6 +127,7 @@ export const ro = {
     folders: 'Folder',
     notes: 'Notiță',
     files: 'Fișier',
+    profiles: 'Setări',
   },
   notes: {
     note: 'Notiță',
@@ -157,6 +158,7 @@ export const ro = {
     trash: 'Mută în coș',
     trashTitle: (title: string) => `Muți „${title}” în coș?`,
     trashHint: 'O poți restaura din coș.',
+    print: 'Printează / Salvează ca PDF',
     notFound: 'Notița nu există sau a fost mutată în coș.',
     readOnly: 'Doar citire',
     inFolder: 'Notițele din folder',
@@ -204,6 +206,86 @@ export const ro = {
     notFound: 'Nu am găsit referința. Verifică numele cărții, capitolul și versetul.',
     books: 'Cărți',
     chapters: (n: number) => `${n} ${n === 1 ? 'capitol' : `${de(n)}capitole`}`,
+  },
+  trash: {
+    title: 'Coș de gunoi',
+    intro:
+      'Ce muți în coș rămâne aici 30 de zile, apoi se șterge definitiv. Până atunci îl poți restaura.',
+    empty: 'Coșul e gol.',
+    restore: 'Restaurează',
+    restoreItem: (name: string) => `Restaurează „${name}”`,
+    restored: (name: string) => `„${name}” a fost restaurat.`,
+    purge: 'Șterge definitiv',
+    purgeItem: (name: string) => `Șterge definitiv „${name}”`,
+    purgeTitle: (name: string) => `Ștergi definitiv „${name}”?`,
+    purgeHint: 'Nu se mai poate recupera, nici de pe celelalte dispozitive.',
+    purgeSpaceHint:
+      'Se șterg definitiv folderul principal și tot ce conține, și pentru cei cu care l-ai partajat. Nu se mai poate recupera.',
+    emptyTrash: 'Golește coșul',
+    emptyTitle: 'Golești coșul?',
+    emptyHint: (n: number) =>
+      `${n === 1 ? 'Un element se șterge' : `${n} ${de(n)}elemente se șterg`} definitiv, cu tot ce conțin. Nu se mai pot recupera.`,
+    emptyOwnHint: 'Se șterg doar elementele din folderele tale principale.',
+    purged: (n: number) =>
+      n === 1
+        ? 'Un element a fost șters definitiv.'
+        : `${n} ${de(n)}elemente au fost șterse definitiv.`,
+    notPurged: 'Unele elemente nu au putut fi șterse acum. Încearcă din nou.',
+    failed: 'Ștergerea nu a reușit. Încearcă din nou.',
+    deletedAgo: (when: string) => `mutat în coș ${when}`,
+    daysLeft: (n: number) =>
+      n === 0
+        ? 'se șterge definitiv în curând'
+        : n === 1
+          ? 'se șterge definitiv mâine'
+          : `se șterge definitiv în ${n} ${de(n)}zile`,
+    kinds: {
+      space: 'Folder principal',
+      folder: 'Folder',
+      note: 'Notiță',
+      file: 'Fișier',
+    },
+  },
+  exportZip: {
+    title: 'Export (copie de siguranță)',
+    intro:
+      'Tot ce vezi în aplicație, într-o arhivă ZIP: notițele ca fișiere .md și fișierele, în structura de foldere. Planul gratuit nu face copii de siguranță, așa că păstrează din când în când un export pe calculator.',
+    summary: (size: string, notes: number, files: number) =>
+      `Exportul complet are ${size}: ${notes} ${notes === 1 ? 'notiță' : `${de(notes)}notițe`} și ${files} ${files === 1 ? 'fișier' : `${de(files)}fișiere`}.`,
+    phoneHint: (size: string) =>
+      `Pe telefon poți exporta doar notițele. Exportul complet (${size}) fă-l de pe calculator: un telefon nu poate ține în memorie o arhivă atât de mare.`,
+    all: 'Exportă tot (ZIP)',
+    notesOnly: (size: string) => `Exportă doar notițele (${size})`,
+    progress: (done: number, total: number) => `Se exportă… ${done} din ${total}`,
+    done: 'Exportul e gata.',
+    cancelled: 'Exportul a fost anulat.',
+    needsInternet:
+      'Unele fișiere nu sunt pe acest dispozitiv: pentru exportul complet e nevoie de internet.',
+    fileFailed: (name: string) =>
+      `Exportul s-a oprit: „${name}” nu s-a putut descărca. Încearcă din nou.`,
+    failed: 'Exportul nu a reușit. Încearcă din nou.',
+  },
+  install: {
+    title: 'Instalare',
+    installed: 'Aplicația e instalată pe acest dispozitiv.',
+    hint: 'Instalată, se deschide ca o aplicație, fără bara browserului, și merge și fără internet.',
+    button: 'Instalează aplicația',
+    iosButton: 'Cum o instalez pe iPhone',
+    iosTitle: 'Instalează pe iPhone',
+    iosSteps: [
+      'În Safari, apasă butonul Distribuie (pătratul cu săgeata în sus), jos pe ecran (pe iPad, sus).',
+      'Derulează și alege „Adaugă pe ecranul principal”.',
+      'Apasă „Adaugă”, apoi deschide BibleNote de pe ecranul principal.',
+    ],
+    iosNotSafari:
+      'Instalarea pe iPhone merge doar din Safari. Dacă linkul s-a deschis în altă aplicație, deschide-l în Safari.',
+    iosAfter:
+      'În aplicația instalată intră din nou în cont: datele ei sunt separate de cele din Safari.',
+    otherBrowsers:
+      'Dacă nu vezi butonul, caută în meniul browserului „Instalează aplicația” sau „Adaugă pe ecranul principal”.',
+    bannerText:
+      'Instalează aplicația pe ecranul principal, ca datele să rămână pe telefon și să meargă fără internet.',
+    bannerHow: 'Cum?',
   },
   about: {
     title: 'Despre',
@@ -396,6 +478,17 @@ export const ro = {
   settings: {
     title: 'Setări',
     version: 'Versiune',
+    appearance: 'Aspect',
+    theme: 'Temă',
+    themes: {
+      light: 'Luminoasă',
+      dark: 'Întunecată',
+      auto: 'Automată',
+    },
+    themeAutoHint: 'Automată urmează setarea telefonului sau a calculatorului.',
+    textSize: 'Mărimea textului în notițe',
+    textSizes: ['Mic', 'Normal', 'Mare', 'Foarte mare'],
+    textPreview: 'Așa arată textul notițelor tale.',
     unsynced: 'Nesincronizate',
     unsyncedEmpty: 'Toate modificările sunt sincronizate.',
     retry: 'Reîncearcă',

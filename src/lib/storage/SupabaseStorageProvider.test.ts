@@ -1,5 +1,8 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { describe, expect, it } from 'vitest'
-import { toStorageApiError } from './SupabaseStorageProvider'
+import type { Database } from '@/lib/database.types'
+import { LIST_PAGE_SIZE, REMOVE_BATCH_SIZE } from './StorageProvider'
+import { createSupabaseStorageProvider, toStorageApiError } from './SupabaseStorageProvider'
 
 describe('toStorageApiError', () => {
   it('treats a taken path as "already exists" (the engine counts it as success)', () => {
@@ -31,5 +34,46 @@ describe('toStorageApiError', () => {
       kind: 'validation',
       message: 'BN_FILE_TOO_LARGE',
     })
+  })
+})
+
+describe('listing and removing objects', () => {
+  /** A storage-js stand-in: `list` pages through `items`, `remove` records its batches. */
+  function fakeClient(items: { name: string; id: string | null; created_at: string | null }[]) {
+    const lists: number[] = []
+    const removes: string[][] = []
+    const bucket = {
+      async list(_prefix: string, options: { limit: number; offset: number }) {
+        lists.push(options.offset)
+        return { data: items.slice(options.offset, options.offset + options.limit), error: null }
+      },
+      async remove(paths: string[]) {
+        removes.push(paths)
+        return { data: [], error: null }
+      },
+    }
+    const client = { storage: { from: () => bucket } } as unknown as SupabaseClient<Database>
+    return { client, lists, removes }
+  }
+
+  it('reads every page and skips folder placeholders', async () => {
+    const items = Array.from({ length: LIST_PAGE_SIZE * 2 + 3 }, (_, i) => ({
+      name: `file-${String(i).padStart(5, '0')}`,
+      id: i === 5 ? null : `id-${i}`,
+      created_at: i === 5 ? null : '2026-01-01T00:00:00Z',
+    }))
+    const { client, lists } = fakeClient(items)
+    const storage = createSupabaseStorageProvider(client, { url: 'https://x', key: 'k' })
+    const objects = await storage.list('space-1')
+    expect(lists).toEqual([0, LIST_PAGE_SIZE, LIST_PAGE_SIZE * 2])
+    expect(objects).toHaveLength(items.length - 1)
+    expect(objects[0]).toEqual({ path: 'space-1/file-00000', createdAt: '2026-01-01T00:00:00Z' })
+  })
+
+  it('removes in batches', async () => {
+    const { client, removes } = fakeClient([])
+    const storage = createSupabaseStorageProvider(client, { url: 'https://x', key: 'k' })
+    await storage.remove(Array.from({ length: REMOVE_BATCH_SIZE + 1 }, (_, i) => `s/${i}`))
+    expect(removes.map((batch) => batch.length)).toEqual([REMOVE_BATCH_SIZE, 1])
   })
 })

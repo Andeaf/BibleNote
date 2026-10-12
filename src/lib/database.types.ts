@@ -25,6 +25,8 @@ export type SpaceRow = {
   created_at: string
   updated_at: string
   deleted_at: string | null
+  /** When the server saw it go into the trash (trigger, server clock); the 30 days count from it. */
+  trashed_at?: string | null
   purged_at: string | null
 }
 
@@ -40,6 +42,8 @@ export type FolderRow = {
   created_at: string
   updated_at: string
   deleted_at: string | null
+  /** When the server saw it go into the trash (trigger, server clock); the 30 days count from it. */
+  trashed_at?: string | null
   purged_at: string | null
 }
 
@@ -58,6 +62,8 @@ export type NoteRow = {
   created_at: string
   updated_at: string
   deleted_at: string | null
+  /** When the server saw it go into the trash (trigger, server clock); the 30 days count from it. */
+  trashed_at?: string | null
   purged_at: string | null
 }
 
@@ -75,6 +81,8 @@ export type FileRow = {
   created_at: string
   updated_at: string
   deleted_at: string | null
+  /** When the server saw it go into the trash (trigger, server clock); the 30 days count from it. */
+  trashed_at?: string | null
   purged_at: string | null
 }
 
@@ -186,7 +194,10 @@ export interface Database {
       }
       set_display_name: { Args: { p_space_id: string; p_name: string }; Returns: undefined }
       touch_presence: { Args: Record<PropertyKey, never>; Returns: undefined }
+      /** {purged, skipped, paths}: paths are the Storage objects of the file rows it purged. */
       purge_items: { Args: { p_ids: string[] }; Returns: Json }
+      /** The 30-day emptying of the caller's own trash, chosen by the server; as purge_items. */
+      purge_expired: { Args: Record<PropertyKey, never>; Returns: Json }
       storage_usage: { Args: Record<PropertyKey, never>; Returns: number }
       ping: { Args: Record<PropertyKey, never>; Returns: string }
     }

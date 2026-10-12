@@ -33,6 +33,8 @@ export const INSERT_COLUMNS: Record<WritableTable, readonly string[]> = {
     'created_by',
     'deleted_at',
   ],
+  // Created by a trigger with the account.
+  profiles: [],
 }
 
 export const UPDATE_COLUMNS: Record<WritableTable, readonly string[]> = {
@@ -40,6 +42,8 @@ export const UPDATE_COLUMNS: Record<WritableTable, readonly string[]> = {
   folders: ['parent_id', 'name', 'color', 'emoji', 'deleted_at', 'updated_by'],
   notes: ['folder_id', 'pinned', 'deleted_at'],
   files: ['folder_id', 'name', 'deleted_at'],
+  // display_name is granted too, but the app sets names per space (set_display_name).
+  profiles: ['settings'],
 }
 
 /**
@@ -66,6 +70,7 @@ export const PARENT_COLUMN: Record<WritableTable, string | null> = {
   folders: 'parent_id',
   notes: 'folder_id',
   files: 'folder_id',
+  profiles: null,
 }
 
 export function pickColumns(

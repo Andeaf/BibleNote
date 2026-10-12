@@ -4,8 +4,10 @@ import {
   ApiError,
   type AnyRow,
   type PullPage,
+  type PurgeResult,
   type SaveNoteResponse,
   type ServerTable,
+  type StoredObject,
   type SyncApi,
   type TransferOptions,
   type WritableTable,
@@ -20,6 +22,11 @@ export interface FakeCall {
     | 'update'
     | 'saveNote'
     | 'uploadObject'
+    | 'objectExists'
+    | 'listObjects'
+    | 'removeObjects'
+    | 'purgeItems'
+    | 'purgeExpired'
     | 'touchPresence'
     | 'refreshAuth'
   table?: string
@@ -46,8 +53,10 @@ export class FakeApi implements SyncApi {
   /** The signed-in user, for owner visibility of purged spaces. */
   me: string | null = null
   calls: FakeCall[] = []
-  /** Storage objects by path ('{space_id}/{file_id}'). */
-  readonly objects = new Map<string, { size: number; type: string }>()
+  /** Storage objects by path ('{space_id}/{file_id}'), with their server creation time. */
+  readonly objects = new Map<string, { size: number; type: string; createdAt: string }>()
+  /** Called at the start of every request, e.g. to change the server in the middle of a job. */
+  beforeCall: (call: FakeCall) => void = () => undefined
   /**
    * Consulted after a successful write: return true to lose the answer (the write happened on
    * the server, the client gets a network error), as on a dropped mobile connection.
@@ -71,6 +80,27 @@ export class FakeApi implements SyncApi {
     return new Date(this.clock).toISOString()
   }
 
+  /** The server clock now (ISO), without advancing it. */
+  serverNow(): string {
+    return new Date(this.clock).toISOString()
+  }
+
+  /** Lets days pass on the server. */
+  advance(ms: number): void {
+    this.clock += ms
+  }
+
+  /** An object stored by someone else (another device), `ageMs` before the server's now. */
+  seedObject(path: string, ageMs = 0): void {
+    const createdAt = new Date(this.clock - ageMs).toISOString()
+    this.objects.set(path, { size: 1, type: 'application/octet-stream', createdAt })
+  }
+
+  private record(call: FakeCall): void {
+    this.calls.push(call)
+    this.beforeCall(call)
+  }
+
   seed(
     table: ServerTable,
     row: Record<string, unknown> & { id: string },
@@ -82,6 +112,8 @@ export class FakeApi implements SyncApi {
       ...row,
       updated_at: updatedAt ?? this.nextTime(),
     } as AnyRow
+    // A seeded trash item has been there since its deleted_at, unless the test says otherwise.
+    if (TRASHABLE.has(table) && full.trashed_at === undefined) full.trashed_at = full.deleted_at
     this.tables[table].set(full.id, full)
     return full
   }
@@ -104,7 +136,10 @@ export class FakeApi implements SyncApi {
   }
 
   async pullPage(table: ServerTable, page: PullPage): Promise<AnyRow[]> {
-    this.calls.push({ method: 'pullPage', table, page })
+    const call: FakeCall = { method: 'pullPage', table, page }
+    this.record(call)
+    const failure = this.failWhen(call)
+    if (failure) throw failure
     let rows = this.visible(table)
     if (page.spaceId) {
       rows = rows.filter((r) => (table === 'spaces' ? r.id : r.space_id) === page.spaceId)
@@ -126,7 +161,9 @@ export class FakeApi implements SyncApi {
   }
 
   async fetchByIds(table: ServerTable, ids: string[]): Promise<AnyRow[]> {
-    this.calls.push({ method: 'fetchByIds', table })
+    this.record({ method: 'fetchByIds', table })
+    const failure = this.failWhen({ method: 'fetchByIds', table })
+    if (failure) throw failure
     return ids.map((id) => this.tables[table].get(id)).filter((r): r is AnyRow => !!r)
   }
 
@@ -155,6 +192,7 @@ export class FakeApi implements SyncApi {
       created_at: time,
       updated_at: time,
     } as unknown as AnyRow
+    if (TRASHABLE.has(table)) row.trashed_at = row.deleted_at ? time : null
     this.tables[table].set(id, row)
     if (this.loseAnswerWhen(call)) throw networkError()
     return { ...row }
@@ -187,8 +225,152 @@ export class FakeApi implements SyncApi {
       throw new ApiError('unique', 'The resource already exists', 'BN_OBJECT_EXISTS', 409)
     }
     options?.onProgress?.(blob.size, blob.size)
-    this.objects.set(path, { size: blob.size, type: contentType })
+    this.objects.set(path, { size: blob.size, type: contentType, createdAt: this.nextTime() })
     if (this.loseAnswerWhen(call)) throw networkError()
+  }
+
+  async serverTime(): Promise<string> {
+    return this.serverNow()
+  }
+
+  async objectExists(path: string): Promise<boolean> {
+    const call: FakeCall = { method: 'objectExists', id: path }
+    this.record(call)
+    const failure = this.failWhen(call)
+    if (failure) throw failure
+    return this.objects.has(path)
+  }
+
+  /** Like storage.list under the read policy: the objects of an accessible space. */
+  async listObjects(spaceId: string): Promise<StoredObject[]> {
+    const call: FakeCall = { method: 'listObjects', id: spaceId }
+    this.record(call)
+    const failure = this.failWhen(call)
+    if (failure) throw failure
+    if (!this.canRead(spaceId)) return []
+    return [...this.objects.entries()]
+      .filter(([path]) => path.startsWith(`${spaceId}/`))
+      .map(([path, object]) => ({ path, createdAt: object.createdAt }))
+      .sort((a, b) => (a.path < b.path ? -1 : 1))
+  }
+
+  /** The delete policy: owner of the path's space; anything else silently stays. */
+  async removeObjects(paths: string[]): Promise<void> {
+    const call: FakeCall = { method: 'removeObjects', payload: { paths } }
+    this.record(call)
+    const failure = this.failWhen(call)
+    if (failure) throw failure
+    for (const path of paths) {
+      if (this.isOwner(path.split('/')[0] ?? '')) this.objects.delete(path)
+    }
+  }
+
+  /** purge_items as in migration ..._purge_paths_and_expired.sql. */
+  async purgeItems(ids: string[]): Promise<PurgeResult> {
+    const call: FakeCall = { method: 'purgeItems', payload: { ids } }
+    this.record(call)
+    const failure = this.failWhen(call)
+    if (failure) throw failure
+    return this.purge(ids)
+  }
+
+  /** purge_expired: the caller's own items in the trash for more than 30 days (server clock). */
+  async purgeExpired(): Promise<PurgeResult> {
+    const call: FakeCall = { method: 'purgeExpired' }
+    this.record(call)
+    const failure = this.failWhen(call)
+    if (failure) throw failure
+    const cutoff = this.clock - 30 * 24 * 60 * 60 * 1000
+    const expired = (row: AnyRow) =>
+      !row.purged_at && typeof row.trashed_at === 'string' && Date.parse(row.trashed_at) < cutoff
+    const ids: string[] = []
+    for (const table of ['spaces', 'folders', 'notes', 'files'] as const) {
+      for (const row of this.tables[table].values()) {
+        const spaceId = String(table === 'spaces' ? row.id : row.space_id)
+        if (expired(row) && this.isOwner(spaceId)) ids.push(row.id)
+      }
+    }
+    return this.purge(ids)
+  }
+
+  private purge(ids: string[]): PurgeResult {
+    const result: PurgeResult = { purged: 0, skipped: [], paths: [] }
+    const scrub = (table: 'notes' | 'files' | 'folders', row: AnyRow, time: string) => {
+      const scrubbed: AnyRow = {
+        ...row,
+        deleted_at: row.deleted_at ?? time,
+        purged_at: time,
+        updated_at: time,
+      }
+      if (table === 'notes')
+        Object.assign(scrubbed, { title: '', content: {}, content_text: '', tags: [] })
+      else scrubbed.name = ''
+      if (table === 'files') result.paths.push(String(row.storage_path))
+      this.tables[table].set(row.id, scrubbed)
+    }
+    for (const id of ids) {
+      const time = this.nextTime()
+      const inTrash = (row: AnyRow | undefined): row is AnyRow =>
+        !!row && !!row.deleted_at && !row.purged_at
+      const note = this.tables.notes.get(id)
+      const file = this.tables.files.get(id)
+      const folder = this.tables.folders.get(id)
+      const space = this.tables.spaces.get(id)
+      const single = inTrash(note)
+        ? (['notes', note] as const)
+        : inTrash(file)
+          ? (['files', file] as const)
+          : null
+      if (single) {
+        if (!this.isOwner(String(single[1].space_id))) {
+          result.skipped.push(id)
+          continue
+        }
+        scrub(single[0], single[1], time)
+        result.purged++
+        continue
+      }
+      if (inTrash(folder)) {
+        if (!this.isOwner(String(folder.space_id))) {
+          result.skipped.push(id)
+          continue
+        }
+        const subtree = new Set([id])
+        let grew = true
+        while (grew) {
+          grew = false
+          for (const f of this.tables.folders.values()) {
+            if (typeof f.parent_id === 'string' && subtree.has(f.parent_id) && !subtree.has(f.id)) {
+              subtree.add(f.id)
+              grew = true
+            }
+          }
+        }
+        for (const table of ['notes', 'files'] as const) {
+          for (const row of [...this.tables[table].values()]) {
+            if (!row.purged_at && subtree.has(String(row.folder_id))) scrub(table, row, time)
+          }
+        }
+        for (const fid of subtree) {
+          const row = this.tables.folders.get(fid)
+          if (row && !row.purged_at) scrub('folders', row, time)
+        }
+        result.purged++
+        continue
+      }
+      if (inTrash(space) && this.me && space.owner_id === this.me) {
+        for (const table of ['notes', 'files', 'folders'] as const) {
+          for (const row of [...this.tables[table].values()]) {
+            if (!row.purged_at && row.space_id === id) scrub(table, row, time)
+          }
+        }
+        this.tables.spaces.set(id, { ...space, name: '', purged_at: time, updated_at: time })
+        result.purged++
+        continue
+      }
+      result.skipped.push(id)
+    }
+    return result
   }
 
   /** Lets held uploads go on. */
@@ -214,7 +396,13 @@ export class FakeApi implements SyncApi {
     const existing = this.tables[table].get(id)
     if (!existing || this.denied.has(id) || existing.purged_at) return []
     this.validate(table, payload, existing)
-    const row = { ...existing, ...payload, updated_at: this.nextTime() } as AnyRow
+    const time = this.nextTime()
+    const row = { ...existing, ...payload, updated_at: time } as AnyRow
+    // The set_trashed_at trigger: the server's clock, whatever deleted_at the client sent.
+    if (TRASHABLE.has(table)) {
+      if (!row.deleted_at) row.trashed_at = null
+      else if (row.deleted_at !== existing.deleted_at) row.trashed_at = time
+    }
     this.tables[table].set(id, row)
     if (this.loseAnswerWhen(call)) throw networkError()
     return [{ ...row }]
@@ -311,6 +499,15 @@ export class FakeApi implements SyncApi {
     return row
   }
 
+  private isOwner(spaceId: string): boolean {
+    const space = this.tables.spaces.get(spaceId)
+    return !!space && !!this.me && space.owner_id === this.me
+  }
+
+  private canRead(spaceId: string): boolean {
+    return this.isOwner(spaceId) || this.access.some((a) => a.id === spaceId)
+  }
+
   private canEdit(spaceId: string): boolean {
     const space = this.tables.spaces.get(spaceId)
     if (!space) return false
@@ -320,7 +517,7 @@ export class FakeApi implements SyncApi {
 
   /** Server-side rules the sync order depends on: RLS on the space, trigger on the parent. */
   private validate(table: WritableTable, payload: Record<string, unknown>, existing?: AnyRow) {
-    if (table === 'spaces') return
+    if (table === 'spaces' || table === 'profiles') return
     const spaceId = String(payload.space_id ?? existing?.space_id)
     if (!this.tables.spaces.has(spaceId)) throw forbiddenError()
     const column = table === 'folders' ? 'parent_id' : 'folder_id'
@@ -340,6 +537,8 @@ export class FakeApi implements SyncApi {
     this.calls.push({ method: 'refreshAuth' })
   }
 }
+
+const TRASHABLE = new Set<string>(['spaces', 'folders', 'notes', 'files'])
 
 export const networkError = () => new ApiError('network', 'TypeError: Failed to fetch')
 export const abortError = () => new ApiError('network', 'BN_ABORTED')

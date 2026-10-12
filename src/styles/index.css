@@ -258,7 +258,8 @@ body {
 /* The note editor: serif, calm, made for long reading. */
 .bn-editor {
   font-family: var(--font-serif);
-  font-size: 1.125rem;
+  /* Set from Settings › "Mărimea textului în notițe" (lib/appearance.ts). */
+  font-size: var(--bn-note-size, 1.125rem);
   line-height: 1.7;
   min-height: 40vh;
   outline: none;
@@ -358,4 +359,61 @@ body {
   float: left;
   height: 0;
   pointer-events: none;
+}
+
+/* "Printează / Salvează ca PDF" on a note: only its title and text, serif, light, no UI
+   (the app chrome carries print:hidden). */
+@media print {
+  @page {
+    margin: 2cm;
+  }
+  :root,
+  .dark {
+    color-scheme: light;
+    --canvas: #ffffff;
+    --surface: #ffffff;
+    --ink: #000000;
+    --muted: #444444;
+    --line: #cccccc;
+    --accent: #000000;
+    --accent-soft: transparent;
+    --hl-yellow: #fde68a;
+    --hl-green: #bbf7d0;
+    --hl-blue: #bfdbfe;
+    --hl-pink: #fbcfe8;
+  }
+  html,
+  body {
+    background: #ffffff;
+  }
+  #bn-notices {
+    display: none !important;
+  }
+  .bn-print-title {
+    margin: 0 0 1rem;
+    font-family: var(--font-serif);
+    font-size: 1.75rem;
+    font-weight: 650;
+    line-height: 1.25;
+  }
+  .bn-editor {
+    min-height: 0;
+  }
+  .bn-editor .bn-ref,
+  .bn-editor a {
+    color: inherit;
+    text-decoration: none;
+  }
+  .bn-editor h1,
+  .bn-editor h2,
+  .bn-editor h3 {
+    break-after: avoid;
+  }
+  .bn-editor blockquote,
+  .bn-editor li {
+    break-inside: avoid;
+  }
+  mark {
+    print-color-adjust: exact;
+  }
 }

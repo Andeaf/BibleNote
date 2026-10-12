@@ -5,6 +5,7 @@ import {
   ApiError,
   type AnyRow,
   type PullPage,
+  type PurgeResult,
   type SaveNoteResponse,
   type ServerTable,
   type SyncApi,
@@ -35,6 +36,16 @@ export function toApiError(error: PostgrestFailure, status?: number): ApiError {
     return new ApiError('server', error.message, code, status)
   }
   return new ApiError('unknown', error.message, code, status)
+}
+
+/** The jsonb answer of purge_items / purge_expired. */
+function purgeResult(data: unknown): PurgeResult {
+  const value = (data ?? {}) as Partial<PurgeResult>
+  return {
+    purged: Number(value.purged ?? 0),
+    skipped: Array.isArray(value.skipped) ? value.skipped.map(String) : [],
+    paths: Array.isArray(value.paths) ? value.paths.filter((p) => typeof p === 'string') : [],
+  }
 }
 
 /**
@@ -106,6 +117,36 @@ export function createSupabaseApi(
 
     uploadObject(path, blob, contentType, options) {
       return storage.upload(path, blob, contentType, options)
+    },
+
+    objectExists(path) {
+      return storage.exists(path)
+    },
+
+    listObjects(spaceId) {
+      return storage.list(spaceId)
+    },
+
+    removeObjects(paths) {
+      return storage.remove(paths)
+    },
+
+    async purgeItems(ids) {
+      const { data, error, status } = await client.rpc('purge_items', { p_ids: ids })
+      if (error) throw toApiError(error, status)
+      return purgeResult(data)
+    },
+
+    async purgeExpired() {
+      const { data, error, status } = await client.rpc('purge_expired')
+      if (error) throw toApiError(error, status)
+      return purgeResult(data)
+    },
+
+    async serverTime() {
+      const { data, error, status } = await client.rpc('ping')
+      if (error) throw toApiError(error, status)
+      return String(data)
     },
 
     async refreshAuth() {

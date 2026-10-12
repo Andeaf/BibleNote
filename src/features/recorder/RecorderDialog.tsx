@@ -3,6 +3,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { Dialog } from '@/components/ui/Dialog'
 import { discardRecording } from '@/data/recordings'
 import { t } from '@/i18n/ro'
+import { isIos } from '@/lib/install'
 import { formatDuration } from '@/lib/files'
 import { defaultRecordingName } from '@/lib/recording'
 import { useSyncRuntime } from '@/sync/SyncContext'
@@ -20,12 +21,6 @@ const ERRORS = {
   failed: t.recorder.failed,
   save: t.recorder.saveFailed,
 } as const
-
-/** iPhone and iPad (iPadOS reports itself as a Mac with touch). */
-const isIos = () =>
-  typeof navigator !== 'undefined' &&
-  (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
 
 const minutes = (ms: number) => formatDuration(ms / 1000)
 

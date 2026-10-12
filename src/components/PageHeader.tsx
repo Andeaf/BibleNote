@@ -27,7 +27,7 @@ interface PageHeaderProps {
  */
 export function PageHeader({ title, backTo, above, actions, titleMenu, status }: PageHeaderProps) {
   return (
-    <header className="sticky top-0 z-10 border-b border-line bg-canvas/95 pt-[env(safe-area-inset-top)] backdrop-blur lg:static lg:border-0 lg:bg-transparent lg:pt-0">
+    <header className="sticky top-0 z-10 border-b border-line bg-canvas/95 pt-[env(safe-area-inset-top)] backdrop-blur lg:static lg:border-0 lg:bg-transparent lg:pt-0 print:hidden">
       <div className="mx-auto max-w-4xl px-2 lg:px-6 lg:pt-6">
         {above && <div className="hidden lg:block">{above}</div>}
         <div className="flex min-h-14 items-center gap-1">

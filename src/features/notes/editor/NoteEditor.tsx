@@ -267,11 +267,13 @@ export function NoteEditor({
   return (
     <div className="pb-8">
       {!readOnly && isDesktop && (
-        <div className="sticky top-0 z-10 -mx-2 mb-2 border-b border-line bg-canvas/95 py-1 backdrop-blur">
+        <div className="sticky top-0 z-10 -mx-2 mb-2 border-b border-line bg-canvas/95 py-1 backdrop-blur print:hidden">
           <EditorToolbar editor={editor} onLink={openLink} onVerse={() => setVerseDialog(true)} />
         </div>
       )}
 
+      {/* The title as printed (a textarea prints badly). */}
+      <h1 className="bn-print-title hidden print:block">{title.trim() || t.notes.untitled}</h1>
       <textarea
         ref={titleEl}
         value={title}
@@ -292,10 +294,10 @@ export function NoteEditor({
         placeholder={t.notes.titlePlaceholder}
         aria-label={t.notes.title}
         enterKeyHint="next"
-        className="mt-4 block w-full resize-none overflow-hidden bg-transparent font-serif text-2xl leading-tight font-semibold text-ink outline-none placeholder:text-muted/70 lg:text-3xl"
+        className="mt-4 block w-full resize-none overflow-hidden bg-transparent font-serif text-2xl leading-tight font-semibold text-ink outline-none placeholder:text-muted/70 lg:text-3xl print:hidden"
       />
 
-      <div className="mt-2">
+      <div className="mt-2 print:hidden">
         {readOnly ? (
           tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
@@ -317,13 +319,15 @@ export function NoteEditor({
         )}
       </div>
 
-      <ModifiedBy note={note} />
+      <div className="print:hidden">
+        <ModifiedBy note={note} />
+      </div>
 
       <EditorContent editor={editor} className="mt-4" />
 
       {phoneToolbar && (
         <div
-          className="fixed inset-x-0 z-30 border-t border-line bg-surface py-1 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]"
+          className="fixed inset-x-0 z-30 border-t border-line bg-surface py-1 shadow-[0_-2px_8px_rgba(0,0,0,0.06)] print:hidden"
           style={{ bottom: inset > 0 ? inset : 'calc(3.5rem + env(safe-area-inset-bottom))' }}
         >
           <EditorToolbar editor={editor} onLink={openLink} onVerse={() => setVerseDialog(true)} />
