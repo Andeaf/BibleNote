@@ -12,6 +12,7 @@ import { FoldersPage } from './features/folders/FoldersPage'
 import { SearchPage } from './features/search/SearchPage'
 import { JoinPage } from './features/share/JoinPage'
 import { SharePage } from './features/share/SharePage'
+import { AboutPage } from './features/settings/AboutPage'
 import { SettingsPage } from './features/settings/SettingsPage'
 import { TagNotesPage, TagsPage } from './features/tags/TagsPage'
 
@@ -45,6 +46,7 @@ export function App() {
             <Route path="tags" element={<TagsPage />} />
             <Route path="tags/:tag" element={<TagNotesPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="about" element={<AboutPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Route>

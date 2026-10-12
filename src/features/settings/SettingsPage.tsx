@@ -1,9 +1,12 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { ChevronRight } from 'lucide-react'
 import { useState } from 'react'
+import { Link } from 'react-router'
 import { useAuth } from '@/auth/AuthContext'
 import { PageHeader } from '@/components/PageHeader'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { t } from '@/i18n/ro'
+import { aboutPath } from '@/lib/paths'
 import { useSyncRuntime } from '@/sync/SyncContext'
 import { StorageSection } from './StorageSection'
 import { UnsyncedList } from './UnsyncedList'
@@ -69,6 +72,15 @@ export function SettingsPage() {
           <div className="flex min-h-12 items-center justify-between gap-4 px-4 py-2">
             <dt className="text-sm text-muted">{t.settings.version}</dt>
             <dd className="text-sm font-medium">{__APP_VERSION__}</dd>
+          </div>
+          <div>
+            <Link
+              to={aboutPath}
+              className="flex min-h-12 items-center justify-between gap-4 px-4 py-2 text-sm hover:bg-canvas"
+            >
+              {t.about.open}
+              <ChevronRight className="size-4 text-muted" aria-hidden="true" />
+            </Link>
           </div>
         </dl>
       </section>

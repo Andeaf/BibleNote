@@ -6,3 +6,4 @@ public
 supabase/.temp
 *.md
 package-lock.json
+src/features/bible/verseCounts.json

@@ -1,6 +1,7 @@
 import { useEditorState, type ChainedCommands, type Editor } from '@tiptap/react'
 import {
   Bold,
+  BookOpen,
   Eraser,
   Heading1,
   Heading2,
@@ -24,6 +25,8 @@ import { HIGHLIGHT_COLORS, type HighlightColor } from './extensions'
 interface EditorToolbarProps {
   editor: Editor
   onLink: () => void
+  /** Opens the "Verset" dialog (search a reference, insert its text). */
+  onVerse: () => void
 }
 
 interface ToolButtonProps {
@@ -57,7 +60,7 @@ function ToolButton({ label, icon: Icon, active, disabled, onClick }: ToolButton
 const Divider = () => <span aria-hidden="true" className="mx-0.5 h-6 w-px shrink-0 bg-line" />
 
 /** The minimal toolbar of the spec. One row; it scrolls sideways on narrow phones. */
-export function EditorToolbar({ editor, onLink }: EditorToolbarProps) {
+export function EditorToolbar({ editor, onLink, onVerse }: EditorToolbarProps) {
   const [colors, setColors] = useState(false)
   const state = useEditorState({
     editor,
@@ -196,6 +199,8 @@ export function EditorToolbar({ editor, onLink }: EditorToolbarProps) {
         onClick={run((c) => c.toggleBlockquote())}
       />
       <ToolButton label={t.editor.link} icon={Link} active={state.link} onClick={onLink} />
+      <Divider />
+      <ToolButton label={t.editor.verse} icon={BookOpen} onClick={onVerse} />
     </div>
   )
 }

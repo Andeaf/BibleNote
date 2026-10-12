@@ -1,6 +1,10 @@
-import { EditorContent, useEditor, type Editor } from '@tiptap/react'
+import { EditorContent, useEditor, type Editor, type JSONContent } from '@tiptap/react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { discardIfEmpty, saveNoteContent } from '@/data/notes'
+import { quoteContent } from '@/features/bible/quote'
+import { ReferencePreview } from '@/features/bible/ReferencePreview'
+import type { ReferenceClick } from '@/features/bible/references'
+import { VerseDialog } from '@/features/bible/VerseDialog'
 import { useIsDesktop } from '@/features/folders/hooks'
 import { TagChip } from '@/features/tags/TagChip'
 import { TagEditor } from '@/features/tags/TagEditor'
@@ -12,6 +16,7 @@ import { useSyncRuntime } from '@/sync/SyncContext'
 import { ModifiedBy } from '../ModifiedBy'
 import { EditorToolbar } from './EditorToolbar'
 import { docOf, noteExtensions } from './extensions'
+import { insertBlock } from './insertBlock'
 import { LinkDialog } from './LinkDialog'
 import { useKeyboardInset } from './useKeyboardInset'
 
@@ -52,6 +57,9 @@ export function NoteEditor({
   const [tags, setTags] = useState(note.tags)
   const [focused, setFocused] = useState(false)
   const [link, setLink] = useState<string | null>(null)
+  /** A Bible reference tapped in the text, shown in a popover / bottom sheet. */
+  const [reference, setReference] = useState<ReferenceClick | null>(null)
+  const [verseDialog, setVerseDialog] = useState(false)
   const titleEl = useRef<HTMLTextAreaElement>(null)
 
   /** The note the text is written to (changes when it moves to a conflict copy). */
@@ -127,7 +135,10 @@ export function NoteEditor({
     timer.current = setTimeout(() => void flush(), SAVE_DELAY_MS)
   }, [flush])
 
-  const extensions = useMemo(() => noteExtensions(t.notes.bodyPlaceholder), [])
+  const extensions = useMemo(
+    () => noteExtensions(t.notes.bodyPlaceholder, (click) => setReference(click)),
+    [],
+  )
   const editor = useEditor({
     extensions,
     content: docOf(note.content),
@@ -140,7 +151,11 @@ export function NoteEditor({
         'aria-multiline': 'true',
       },
     },
-    onUpdate: () => markDirty(),
+    onUpdate: () => {
+      markDirty()
+      // Typing goes on with the popover open (desktop); the reference may have moved.
+      setReference(null)
+    },
     onFocus: () => setFocused(true),
     onBlur: () => setFocused(false),
   })
@@ -241,11 +256,19 @@ export function NoteEditor({
     setLink(null)
   }
 
+  function insertVerses(at: number, content: JSONContent) {
+    if (callbacks.current.readOnly) return
+    editor.view.dispatch(insertBlock(editor.state, at, content))
+    editor.commands.focus()
+    setReference(null)
+    setVerseDialog(false)
+  }
+
   return (
     <div className="pb-8">
       {!readOnly && isDesktop && (
         <div className="sticky top-0 z-10 -mx-2 mb-2 border-b border-line bg-canvas/95 py-1 backdrop-blur">
-          <EditorToolbar editor={editor} onLink={openLink} />
+          <EditorToolbar editor={editor} onLink={openLink} onVerse={() => setVerseDialog(true)} />
         </div>
       )}
 
@@ -303,8 +326,26 @@ export function NoteEditor({
           className="fixed inset-x-0 z-30 border-t border-line bg-surface py-1 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]"
           style={{ bottom: inset > 0 ? inset : 'calc(3.5rem + env(safe-area-inset-bottom))' }}
         >
-          <EditorToolbar editor={editor} onLink={openLink} />
+          <EditorToolbar editor={editor} onLink={openLink} onVerse={() => setVerseDialog(true)} />
         </div>
+      )}
+
+      {reference && (
+        <ReferencePreview
+          key={`${reference.from}-${reference.to}`}
+          click={reference}
+          canInsert={!readOnly}
+          onInsert={(click, verses) => insertVerses(click.to, quoteContent(click.ref, verses))}
+          onClose={() => setReference(null)}
+        />
+      )}
+      {verseDialog && (
+        <VerseDialog
+          onClose={() => setVerseDialog(false)}
+          onInsert={(ref, verses) =>
+            insertVerses(editor.state.selection.from, quoteContent(ref, verses))
+          }
+        />
       )}
 
       {link !== null && (

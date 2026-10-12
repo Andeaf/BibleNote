@@ -310,6 +310,17 @@ body {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+/* Bible references found in the text (decorations, never saved): a discreet link. */
+.bn-editor .bn-ref {
+  color: var(--accent);
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.bn-editor .bn-ref:hover {
+  text-decoration-style: solid;
+}
 .bn-editor mark {
   color: inherit;
   border-radius: 0.2em;

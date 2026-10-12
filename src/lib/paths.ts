@@ -10,5 +10,9 @@ export const filePath = (fileId: string): string => `/file/${fileId}`
 
 export const sharePath = (spaceId: string): string => `/f/${spaceId}/share`
 
+export const settingsPath = '/settings'
+
+export const aboutPath = '/about'
+
 /** A share link inside the app (the token never stays in the history, see JoinPage). */
 export const joinPath = (token: string): string => `/s/${token}`

@@ -2,6 +2,7 @@ import Highlight from '@tiptap/extension-highlight'
 import { TaskItem, TaskList } from '@tiptap/extension-list'
 import { Placeholder } from '@tiptap/extensions'
 import StarterKit from '@tiptap/starter-kit'
+import { BibleReferences, type ReferenceClick } from '@/features/bible/references'
 import type { Json } from '@/lib/database.types'
 
 /** The four highlight colours. The key is stored in the note; CSS gives each theme its shade. */
@@ -25,8 +26,9 @@ const ColorHighlight = Highlight.extend({
  * Exactly the nodes of the spec: H1–H3, bold, italic, underline, highlight in 4 colours, bullet
  * and numbered lists, checklist, quote, link, undo/redo. Markdown shortcuts come with them
  * ("# ", "**x**", "- ", "1. ", "> ", "[] "). Strike, code and horizontal rule are left out.
+ * Bible references are decorated as links; `onReference` gets the one tapped.
  */
-export function noteExtensions(placeholder: string) {
+export function noteExtensions(placeholder: string, onReference: (click: ReferenceClick) => void) {
   return [
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
@@ -49,6 +51,7 @@ export function noteExtensions(placeholder: string) {
     TaskList,
     TaskItem.configure({ nested: true }),
     Placeholder.configure({ placeholder }),
+    BibleReferences.configure({ onOpen: onReference }),
   ]
 }
 

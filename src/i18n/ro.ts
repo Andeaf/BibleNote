@@ -192,6 +192,29 @@ export const ro = {
     linkApply: 'Aplică',
     linkRemove: 'Elimină linkul',
     linkOpen: 'Deschide linkul',
+    verse: 'Verset',
+  },
+  bible: {
+    insert: 'Inserează în notiță',
+    loadFailed:
+      'Textul nu s-a putut încărca. Biblia se descarcă pentru offline după prima deschidere cu internet.',
+    referenceLabel: 'Referință',
+    referencePlaceholder: 'ex. Ioan 3:16, 1 Cor 13:4-7 sau Psalmul 23',
+    referenceHint: 'Scrie cartea, capitolul și, dacă vrei, versetele.',
+    notFound: 'Nu am găsit referința. Verifică numele cărții, capitolul și versetul.',
+    books: 'Cărți',
+    chapters: (n: number) => `${n} ${n === 1 ? 'capitol' : `${de(n)}capitole`}`,
+  },
+  about: {
+    title: 'Despre',
+    open: 'Despre BibleNote',
+    version: (version: string) => `Versiunea ${version}`,
+    bibleTitle: 'Textul biblic',
+    bibleText:
+      'Biblia Cornilescu, ediția corectată (Romanian Corrected Cornilescu Version), în domeniul public.',
+    bibleSource: 'Sursa: proiectul open-bibles de pe GitHub.',
+    fontsTitle: 'Fonturi',
+    fontsText: 'Inter și Source Serif 4, sub licența SIL Open Font License, găzduite în aplicație.',
   },
   files: {
     list: 'Fișiere',
