@@ -1,4 +1,4 @@
-import type { NoteRow } from '@/lib/database.types'
+import type { FileRow, NoteRow } from '@/lib/database.types'
 import { normalize, normalizeWithMap } from '@/lib/normalize'
 
 /** One note, normalized once (cached by row identity: a changed note is a new object). */
@@ -99,4 +99,22 @@ export function snippetOf(text: string, query: string, radius = 50): Snippet | n
     match: flat(text.slice(start, end)),
     after: flat(text.slice(end, to)) + (to < text.length ? '…' : ''),
   }
+}
+
+const fileNames = new WeakMap<FileRow, string>()
+
+/** Files whose name contains every word of the query (case and diacritics ignored), newest first. */
+export function searchFiles(files: readonly FileRow[], query: string): FileRow[] {
+  const words = queryWords(query)
+  if (words.length === 0) return []
+  return files
+    .filter((file) => {
+      let name = fileNames.get(file)
+      if (name === undefined) {
+        name = normalize(file.name)
+        fileNames.set(file, name)
+      }
+      return words.every((word) => (name as string).includes(word))
+    })
+    .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))
 }

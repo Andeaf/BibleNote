@@ -13,19 +13,22 @@ import {
   FolderOpen,
   FolderPlus,
   FolderInput,
+  Mic,
   Palette,
   Pencil,
   Pin,
   PinOff,
   Plus,
   Trash2,
+  Upload,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState, type DragEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { EmptyState } from '@/components/EmptyState'
 import { PageHeader } from '@/components/PageHeader'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Menu, type MenuItem } from '@/components/ui/Menu'
+import { moveFile } from '@/data/files'
 import { createFolder, moveFolder, trashFolder, updateFolder } from '@/data/folders'
 import { createNote, moveNote, setNotePinned, trashNote } from '@/data/notes'
 import {
@@ -36,11 +39,15 @@ import {
   sortItems,
   sortNotes,
 } from '@/data/tree'
+import { FILE_DRAG, FolderFiles } from '@/features/files/FolderFiles'
+import { useSpaceFiles } from '@/features/files/hooks'
+import { useUpload } from '@/features/files/useUpload'
 import { useNow, useSpaceNotes } from '@/features/notes/hooks'
 import { NoteRowItem } from '@/features/notes/NoteRowItem'
+import { RecorderDialog } from '@/features/recorder/RecorderDialog'
 import { TagChip } from '@/features/tags/TagChip'
 import { t } from '@/i18n/ro'
-import type { FolderRow, NoteRow } from '@/lib/database.types'
+import type { FileKind, FolderRow, NoteRow } from '@/lib/database.types'
 import { folderPath, notePath } from '@/lib/paths'
 import { collectTags, tagKey } from '@/lib/tags'
 import { useSyncRuntime } from '@/sync/SyncContext'
@@ -58,13 +65,21 @@ type DialogState =
   | { mode: 'trash'; folder: FolderRow }
   | { mode: 'move-note'; note: NoteRow }
   | { mode: 'trash-note'; note: NoteRow }
+  | { mode: 'record' }
 
 const NOTE_DRAG = 'note:'
 const noteTitle = (note: NoteRow) => note.title.trim() || t.notes.untitled
 
+/** The type filter (?type=): Notițe / Audio / Imagini / Documente. */
+type TypeFilter = 'all' | 'notes' | FileKind
+const TYPE_FILTERS: TypeFilter[] = ['all', 'notes', 'audio', 'image', 'document']
+const toTypeFilter = (value: string | null): TypeFilter =>
+  TYPE_FILTERS.find((type) => type === value) ?? 'all'
+
 /**
- * One folder of a main folder: breadcrumb, subfolders and notes (pinned first), a tag filter
- * over the whole subtree, create/rename/move/trash, drag & drop on desktop.
+ * One folder of a main folder: breadcrumb, subfolders, notes (pinned first) and files (images as
+ * a gallery), a tag filter over the whole subtree and a type filter, create/rename/move/trash,
+ * upload (button, or files dropped on the page on desktop), audio recording, drag & drop.
  */
 export function FolderPage() {
   const { spaceId = '', folderId } = useParams()
@@ -74,14 +89,19 @@ export function FolderPage() {
   const space = useSpace(spaceId)
   const folders = useSpaceFolders(spaceId)
   const notes = useSpaceNotes(spaceId)
+  const files = useSpaceFiles(spaceId)
   const isDesktop = useIsDesktop()
   const now = useNow()
   const [sort, setSort] = useSortMode()
   const [dialog, setDialog] = useState<DialogState>(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
   const tagFilter = params.get('tag')
-
+  const typeFilter = toTypeFilter(params.get('type'))
   const here = folderId ?? null
+  const { upload, busy: preparing } = useUpload(spaceId, here)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const [dropping, setDropping] = useState(false)
+
   const subtreeNotes = useMemo(() => {
     if (!folders || !notes) return []
     const ids = new Set<string | null>([here, ...(here ? descendantIds(folders, here) : [])])
@@ -96,7 +116,9 @@ export function FolderPage() {
   }, [folders, notes, here])
   const folderTags = useMemo(() => collectTags(subtreeNotes), [subtreeNotes])
 
-  if (space === undefined || folders === undefined || notes === undefined) return null
+  if (space === undefined || folders === undefined || notes === undefined || files === undefined) {
+    return null
+  }
 
   const current = folderId ? folders.find((f) => f.id === folderId) : null
   if (!space || (folderId && (!current || current.deleted_at))) {
@@ -127,15 +149,49 @@ export function FolderPage() {
         subtreeNotes.filter((n) => n.folder_id === here),
         sort,
       )
+  const hereFiles = sortItems(
+    files.filter((f) => f.folder_id === here && !f.deleted_at),
+    sort,
+  )
+  const shownFiles = activeTag
+    ? []
+    : typeFilter === 'all'
+      ? hereFiles
+      : hereFiles.filter((f) => f.kind === typeFilter)
+  const showNotes = typeFilter === 'all' || typeFilter === 'notes'
+  const shownNotes = showNotes ? listed : []
   const folderName = (id: string | null) =>
     [space.name, ...pathTo(folders, id).map((f) => f.name)].join(' › ')
 
-  function setTag(key: string | null) {
+  function setParam(name: 'tag' | 'type', value: string | null) {
     const next = new URLSearchParams(params)
-    if (key) next.set('tag', key)
-    else next.delete('tag')
+    if (value) next.set(name, value)
+    else next.delete(name)
     setParams(next, { replace: true })
   }
+  const setTag = (key: string | null) => setParam('tag', key)
+
+  // Files dragged from the computer onto the page (desktop); dnd-kit moves are not "Files".
+  const hasFiles = (event: DragEvent) => event.dataTransfer.types.includes('Files')
+  const dropProps = canEdit
+    ? {
+        onDragOver: (event: DragEvent) => {
+          if (!hasFiles(event)) return
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'copy'
+          setDropping(true)
+        },
+        onDragLeave: (event: DragEvent) => {
+          if (event.currentTarget === event.target) setDropping(false)
+        },
+        onDrop: (event: DragEvent) => {
+          if (!hasFiles(event)) return
+          event.preventDefault()
+          setDropping(false)
+          void upload(event.dataTransfer.files)
+        },
+      }
+    : {}
 
   async function submit(value: FolderFormValue) {
     if (dialog?.mode === 'edit') await updateFolder(db, userId, dialog.folder.id, value)
@@ -183,6 +239,12 @@ export function FolderPage() {
     const target = over === 'drop:root' ? null : over.replace(/^drop:/, '')
     if (id.startsWith(NOTE_DRAG)) {
       void moveNoteTo(id.slice(NOTE_DRAG.length), target)
+      return
+    }
+    if (id.startsWith(FILE_DRAG)) {
+      void moveFile(db, id.slice(FILE_DRAG.length), target).then((moved) => {
+        if (moved) engine.requestPush()
+      })
       return
     }
     if (target === id || isSelfOrDescendant(folders ?? [], id, target)) return
@@ -261,8 +323,8 @@ export function FolderPage() {
     </nav>
   )
 
-  const showFolders = !activeTag && children.length > 0
-  const empty = !showFolders && listed.length === 0
+  const showFolders = !activeTag && typeFilter === 'all' && children.length > 0
+  const empty = !showFolders && shownNotes.length === 0 && shownFiles.length === 0
 
   return (
     <DndContext sensors={sensors} onDragEnd={onDragEnd}>
@@ -292,6 +354,16 @@ export function FolderPage() {
                         icon: FolderPlus,
                         onSelect: () => setDialog({ mode: 'create' }),
                       },
+                      {
+                        label: t.files.upload,
+                        icon: Upload,
+                        onSelect: () => fileInput.current?.click(),
+                      },
+                      {
+                        label: t.recorder.title,
+                        icon: Mic,
+                        onSelect: () => setDialog({ mode: 'record' }),
+                      },
                     ]}
                   />
                 </div>
@@ -299,9 +371,27 @@ export function FolderPage() {
                   type="button"
                   className="btn btn-secondary ml-2 hidden sm:inline-flex"
                   onClick={() => setDialog({ mode: 'create' })}
+                  aria-label={t.folders.newFolder}
                 >
                   <FolderPlus className="size-4" aria-hidden="true" />
-                  {t.folders.newFolder}
+                  <span className="hidden xl:inline">{t.folders.newFolder}</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary ml-2 hidden sm:inline-flex"
+                  onClick={() => fileInput.current?.click()}
+                  aria-label={t.files.upload}
+                >
+                  <Upload className="size-4" aria-hidden="true" />
+                  <span className="hidden xl:inline">{t.files.uploadShort}</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary ml-2 hidden sm:inline-flex"
+                  onClick={() => setDialog({ mode: 'record' })}
+                  aria-label={t.recorder.title}
+                >
+                  <Mic className="size-4" aria-hidden="true" />
                 </button>
                 <button
                   type="button"
@@ -317,8 +407,60 @@ export function FolderPage() {
         }
       />
 
-      <div className="mx-auto max-w-4xl px-4 py-4 lg:px-6">
-        {folderTags.length > 0 && (
+      <div
+        className={`relative mx-auto max-w-4xl px-4 py-4 lg:px-6 ${
+          dropping ? 'rounded-2xl outline-2 outline-accent outline-dashed' : ''
+        }`}
+        {...dropProps}
+      >
+        {canEdit && (
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            className="hidden"
+            tabIndex={-1}
+            aria-hidden="true"
+            onChange={(event) => {
+              void upload(event.target.files)
+              event.target.value = ''
+            }}
+          />
+        )}
+        {dropping && (
+          <p className="pointer-events-none absolute inset-x-4 top-2 z-10 rounded-xl bg-accent-soft px-4 py-3 text-center text-sm font-medium text-accent">
+            {t.files.dropHere}
+          </p>
+        )}
+        {preparing && (
+          <p role="status" className="mb-3 text-sm text-muted">
+            {t.files.preparing}
+          </p>
+        )}
+        {hereFiles.length > 0 && !activeTag && (
+          <div
+            role="group"
+            aria-label={t.files.filter}
+            className="-mx-4 mb-3 flex gap-1.5 overflow-x-auto px-4 pb-1"
+          >
+            {TYPE_FILTERS.map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setParam('type', type === 'all' ? null : type)}
+                aria-pressed={typeFilter === type}
+                className={`min-h-11 shrink-0 rounded-full border px-3 text-sm font-medium ${
+                  typeFilter === type
+                    ? 'border-accent bg-accent-soft text-accent'
+                    : 'border-line text-muted'
+                }`}
+              >
+                {t.files.types[type]}
+              </button>
+            ))}
+          </div>
+        )}
+        {folderTags.length > 0 && showNotes && (
           <div
             role="group"
             aria-label={t.tags.filter}
@@ -350,7 +492,13 @@ export function FolderPage() {
           <EmptyState
             icon={FolderPlus}
             title={current?.name ?? space.name}
-            hint={activeTag ? t.tags.noNotes : t.folders.emptyFolder}
+            hint={
+              activeTag
+                ? t.tags.noNotes
+                : typeFilter !== 'all'
+                  ? t.files.emptyType
+                  : t.folders.emptyFolder
+            }
           />
         ) : (
           <>
@@ -369,10 +517,10 @@ export function FolderPage() {
                 </ul>
               </section>
             )}
-            {listed.length > 0 && (
+            {shownNotes.length > 0 && (
               <section aria-label={t.notes.list} className={showFolders ? 'mt-4' : ''}>
                 <ul className="flex flex-col gap-1">
-                  {listed.map((note) => (
+                  {shownNotes.map((note) => (
                     <li key={note.id}>
                       <DraggableNote
                         note={note}
@@ -386,9 +534,23 @@ export function FolderPage() {
                 </ul>
               </section>
             )}
+            {shownFiles.length > 0 && (
+              <FolderFiles
+                files={shownFiles}
+                folders={folders}
+                spaceName={space.name}
+                canEdit={canEdit}
+                draggable={isDesktop && canEdit}
+                now={now}
+                className={showFolders || shownNotes.length > 0 ? 'mt-4' : ''}
+              />
+            )}
           </>
         )}
       </div>
+      {dialog?.mode === 'record' && (
+        <RecorderDialog spaceId={spaceId} folderId={here} onClose={() => setDialog(null)} />
+      )}
 
       <FolderDialog
         open={dialog?.mode === 'create' || dialog?.mode === 'edit'}

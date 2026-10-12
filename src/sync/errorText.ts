@@ -12,5 +12,7 @@ export function syncErrorText(error: string | null): string {
   if (code.includes('BN_FOLDER_DELETED')) return t.sync.errors.folderDeleted
   if (code.includes('BN_FOLDER_NOT_IN_SPACE')) return t.sync.errors.folderNotInSpace
   if (code.includes('BN_FOLDER_CYCLE')) return t.sync.errors.cycle
+  if (code.includes('BN_BLOB_MISSING')) return t.sync.errors.blobMissing
+  if (code.includes('BN_FILE_TOO_LARGE')) return t.sync.errors.fileTooLarge
   return t.sync.errors.generic(code.slice(0, 80) || '?')
 }

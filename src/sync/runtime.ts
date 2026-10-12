@@ -1,5 +1,7 @@
 import { liveQuery } from 'dexie'
 import { deleteDb, openDb, type BibleNoteDb } from '@/lib/db'
+import type { StorageProvider } from '@/lib/storage/StorageProvider'
+import { createSupabaseStorageProvider } from '@/lib/storage/SupabaseStorageProvider'
 import { supabase } from '@/lib/supabase'
 import { SyncEngine } from './engine'
 import { createRealtimeHub } from './realtime'
@@ -18,6 +20,8 @@ export interface Notice {
 export interface SyncRuntime {
   db: BibleNoteDb
   engine: SyncEngine
+  /** File contents: signed URLs to read, storage usage. Uploads go through the engine. */
+  storage: StorageProvider
   userId: string
   notices: Store<Notice[]>
   /** Shows a notice from the UI (e.g. the editor saved the text as a conflict copy). */
@@ -38,7 +42,8 @@ export interface SyncRuntime {
  */
 export function createSyncRuntime(userId: string): SyncRuntime {
   const db = openDb(userId)
-  const api = createSupabaseApi(supabase)
+  const storage = createSupabaseStorageProvider(supabase)
+  const api = createSupabaseApi(supabase, storage)
   const notices = createStore<Notice[]>([])
   let nextNoticeId = 1
   const cleanups: Array<() => void> = []
@@ -57,6 +62,7 @@ export function createSyncRuntime(userId: string): SyncRuntime {
   return {
     db,
     engine,
+    storage,
     userId,
     notices,
     notify,

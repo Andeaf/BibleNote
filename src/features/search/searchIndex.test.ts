@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { NoteRow } from '@/lib/database.types'
-import { queryWords, searchNotes, snippetOf } from './searchIndex'
+import type { FileRow, NoteRow } from '@/lib/database.types'
+import { queryWords, searchFiles, searchNotes, snippetOf } from './searchIndex'
 
 const note = (id: string, title: string, text: string, tags: string[] = [], at = 1): NoteRow => ({
   id,
@@ -56,5 +56,35 @@ describe('search', () => {
     expect(snippet?.before.endsWith('despre ')).toBe(true)
     expect(snippetOf('scurt', 'lipsă')).toBeNull()
     expect(snippetOf('Ţara mea', 'tara')).toEqual({ before: '', match: 'Ţara', after: ' mea' })
+  })
+})
+
+const file = (id: string, name: string, at = 1): FileRow => ({
+  id,
+  space_id: 's',
+  folder_id: null,
+  name,
+  kind: 'audio',
+  mime: 'audio/webm',
+  size_bytes: 1,
+  storage_path: `s/${id}`,
+  duration_sec: null,
+  created_by: null,
+  created_at: '2026-01-01T00:00:00.000Z',
+  updated_at: new Date(Date.UTC(2026, 0, at)).toISOString(),
+  deleted_at: null,
+  purged_at: null,
+})
+
+describe('searchFiles', () => {
+  it('finds file names without case or diacritics, cedilla included, newest first', () => {
+    const files = [
+      file('a', 'Predică despre rugăciune.m4a', 1),
+      file('b', 'Ştiinţă și credință.pdf', 2),
+      file('c', 'Rugăciunea de dimineață.webm', 3),
+    ]
+    expect(searchFiles(files, 'RUGACIUNE').map((f) => f.id)).toEqual(['c', 'a'])
+    expect(searchFiles(files, 'știință credinta').map((f) => f.id)).toEqual(['b'])
+    expect(searchFiles(files, '  ')).toEqual([])
   })
 })

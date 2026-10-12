@@ -7,6 +7,7 @@ import { t } from '@/i18n/ro'
 import { syncErrorText } from '@/sync/errorText'
 import { useSyncRuntime } from '@/sync/SyncContext'
 import { ApiError, type OutboxEntry } from '@/sync/types'
+import { StorageSection } from './StorageSection'
 
 interface FailedItem {
   entry: OutboxEntry
@@ -126,6 +127,8 @@ export function SettingsPage() {
             </ul>
           )}
         </div>
+
+        <StorageSection />
 
         <dl className="mt-6 divide-y divide-line rounded-xl border border-line bg-surface">
           <div className="flex min-h-12 items-center justify-between gap-4 px-4 py-2">

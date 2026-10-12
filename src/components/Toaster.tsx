@@ -22,6 +22,8 @@ function noticeText(notice: SyncNotice): string {
       return t.notes.conflict
     case 'gone':
       return t.sync.gone(notice.name || itemFallback(notice.table))
+    case 'message':
+      return notice.text
   }
 }
 

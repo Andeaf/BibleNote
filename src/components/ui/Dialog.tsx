@@ -8,6 +8,11 @@ interface DialogProps {
   onOpenChange: (open: boolean) => void
   title: string
   description?: string
+  /**
+   * False while the dialog must stay (a recording in progress): no close button, Escape and
+   * clicks outside do nothing.
+   */
+  dismissible?: boolean
   children: ReactNode
 }
 
@@ -15,22 +20,38 @@ interface DialogProps {
  * One dialog for both form factors: a bottom sheet on phones, a centred modal from `lg`.
  * Built on Radix Dialog (focus trap, Escape, ARIA); no separate sheet library.
  */
-export function Dialog({ open, onOpenChange, title, description, children }: DialogProps) {
+export function Dialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  dismissible = true,
+  children,
+}: DialogProps) {
+  const keep = (event: Event) => {
+    if (!dismissible) event.preventDefault()
+  }
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
         <RadixDialog.Overlay className="fixed inset-0 z-40 bg-black/40 data-[state=open]:animate-[bn-fade-in_150ms_ease-out]" />
-        <RadixDialog.Content className="fixed inset-x-0 bottom-0 z-50 max-h-[90dvh] overflow-y-auto rounded-t-2xl bg-surface p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-xl data-[state=open]:animate-[bn-sheet-up_200ms_ease-out] lg:inset-auto lg:top-1/2 lg:left-1/2 lg:w-full lg:max-w-md lg:-translate-x-1/2 lg:-translate-y-1/2 lg:rounded-2xl lg:data-[state=open]:animate-[bn-fade-in_150ms_ease-out]">
+        <RadixDialog.Content
+          onEscapeKeyDown={keep}
+          onInteractOutside={keep}
+          className="fixed inset-x-0 bottom-0 z-50 max-h-[90dvh] overflow-y-auto rounded-t-2xl bg-surface p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-xl data-[state=open]:animate-[bn-sheet-up_200ms_ease-out] lg:inset-auto lg:top-1/2 lg:left-1/2 lg:w-full lg:max-w-md lg:-translate-x-1/2 lg:-translate-y-1/2 lg:rounded-2xl lg:data-[state=open]:animate-[bn-fade-in_150ms_ease-out]"
+        >
           <div className="flex items-start justify-between gap-4">
             <RadixDialog.Title className="text-lg font-semibold tracking-tight">
               {title}
             </RadixDialog.Title>
-            <RadixDialog.Close
-              className="-mt-1 -mr-2 flex size-11 items-center justify-center rounded-lg text-muted hover:text-ink"
-              aria-label={t.common.close}
-            >
-              <X className="size-5" aria-hidden="true" />
-            </RadixDialog.Close>
+            {dismissible && (
+              <RadixDialog.Close
+                className="-mt-1 -mr-2 flex size-11 items-center justify-center rounded-lg text-muted hover:text-ink"
+                aria-label={t.common.close}
+              >
+                <X className="size-5" aria-hidden="true" />
+              </RadixDialog.Close>
+            )}
           </div>
           {description ? (
             <RadixDialog.Description className="mt-1 text-sm text-muted">

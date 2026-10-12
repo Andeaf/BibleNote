@@ -9,8 +9,9 @@ export type WritableTable = 'spaces' | 'folders' | 'notes' | 'files'
 /**
  * `insert` / `update`: direct writes (for notes `update` is update_note_meta: folder_id, pinned,
  * deleted_at). `save_note`: note content through the RPC, checked against `base_version`.
+ * `upload`: a new file: first its Storage object (the blob kept in `blobs`), then its row.
  */
-export type OutboxOp = 'insert' | 'update' | 'save_note'
+export type OutboxOp = 'insert' | 'update' | 'save_note' | 'upload'
 export type OutboxStatus = 'pending' | 'inflight' | 'failed'
 
 /**
@@ -34,6 +35,11 @@ export interface OutboxEntry {
    * on the server yet; such an entry creates it and follows every insert rule (createsRow).
    */
   base_version?: number | null
+  /**
+   * upload only: the Storage object is confirmed (first stage), so a retry only inserts the row.
+   * The object always exists before the row (docs/PLAN.md §4.6d).
+   */
+  uploaded?: boolean
 }
 
 export type AnyRow = Record<string, unknown> & { id: string; updated_at: string }
@@ -86,6 +92,11 @@ export interface SyncApi {
   insert(table: WritableTable, payload: Record<string, unknown>): Promise<AnyRow>
   /** Returns the updated rows; an empty array means RLS denied it (never an error). */
   update(table: WritableTable, id: string, payload: Record<string, unknown>): Promise<AnyRow[]>
+  /**
+   * Stores a file object at its fixed path ('{space_id}/{file_id}'). Throws ApiError 'unique'
+   * when the path already holds an object, e.g. our own upload whose answer was lost.
+   */
+  uploadObject(path: string, blob: Blob, contentType: string): Promise<void>
   /** The save_note RPC: inserts a new note, or updates the content when the version matches. */
   saveNote(note: Record<string, unknown>, baseVersion: number | null): Promise<SaveNoteResponse>
   touchPresence(): Promise<void>
@@ -101,6 +112,8 @@ export type SyncNotice =
   | { kind: 'conflict'; noteId: string; copyId: string; name: string }
   /** The row was permanently deleted on the server; the local change was dropped. */
   | { kind: 'gone'; table: WritableTable; name: string }
+  /** A plain message from the UI (a file refused before upload, a recording saved…). */
+  | { kind: 'message'; text: string }
 
 export interface SyncState {
   online: boolean

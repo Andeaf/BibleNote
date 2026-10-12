@@ -1,6 +1,7 @@
 import { FolderOpen, Search, Settings, Tag } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
 import { FolderTree } from '@/features/folders/FolderTree'
+import { RecordingRecovery } from '@/features/recorder/RecordingRecovery'
 import { t } from '@/i18n/ro'
 import { SyncIndicator } from './SyncIndicator'
 import { Toaster } from './Toaster'
@@ -55,6 +56,7 @@ export function AppShell() {
       </main>
 
       <Toaster />
+      <RecordingRecovery />
 
       <nav
         aria-label={t.nav.main}

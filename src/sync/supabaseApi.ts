@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/lib/database.types'
+import type { StorageProvider } from '@/lib/storage/StorageProvider'
 import {
   ApiError,
   type AnyRow,
@@ -38,9 +39,13 @@ export function toApiError(error: PostgrestFailure, status?: number): ApiError {
 
 /**
  * SyncApi over supabase-js. Table names are dynamic here, so the typed client is used loosely;
- * type safety lives in the data layer, column safety in sync/columns.ts.
+ * type safety lives in the data layer, column safety in sync/columns.ts. File objects go
+ * through the StorageProvider.
  */
-export function createSupabaseApi(client: SupabaseClient<Database>): SyncApi {
+export function createSupabaseApi(
+  client: SupabaseClient<Database>,
+  storage: StorageProvider,
+): SyncApi {
   const loose = client as unknown as SupabaseClient
   return {
     async mySpaces() {
@@ -97,6 +102,10 @@ export function createSupabaseApi(client: SupabaseClient<Database>): SyncApi {
       })
       if (error) throw toApiError(error, status)
       return data as unknown as SaveNoteResponse
+    },
+
+    uploadObject(path, blob, contentType) {
+      return storage.upload(path, blob, contentType)
     },
 
     async refreshAuth() {

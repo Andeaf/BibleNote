@@ -1,18 +1,22 @@
+import { useSyncExternalStore } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
+import { activeRecording } from '@/features/recorder/AudioRecorder'
 import { t } from '@/i18n/ro'
 import { NoticeStack } from './NoticeStack'
 
 /**
  * Shown when a new service worker is waiting. The app never reloads on its own,
- * so an in-progress recording or an unsaved edit is never interrupted.
+ * so an in-progress recording or an unsaved edit is never interrupted; while this tab records,
+ * the prompt waits.
  */
 export function UpdatePrompt() {
   const {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW()
+  const recording = useSyncExternalStore(activeRecording.subscribe, activeRecording.get)
 
-  if (!needRefresh) return null
+  if (!needRefresh || recording.id) return null
 
   return (
     <NoticeStack>

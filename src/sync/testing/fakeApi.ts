@@ -18,6 +18,7 @@ export interface FakeCall {
     | 'insert'
     | 'update'
     | 'saveNote'
+    | 'uploadObject'
     | 'touchPresence'
     | 'refreshAuth'
   table?: string
@@ -44,6 +45,13 @@ export class FakeApi implements SyncApi {
   /** The signed-in user, for owner visibility of purged spaces. */
   me: string | null = null
   calls: FakeCall[] = []
+  /** Storage objects by path ('{space_id}/{file_id}'). */
+  readonly objects = new Map<string, { size: number; type: string }>()
+  /**
+   * Consulted after a successful write: return true to lose the answer (the write happened on
+   * the server, the client gets a network error), as on a dropped mobile connection.
+   */
+  loseAnswerWhen: (call: FakeCall) => boolean = () => false
   /** Ids whose updates are denied by "RLS" (0 rows). */
   denied = new Set<string>()
   /** Consulted before every insert/update; return an error to throw it. */
@@ -123,6 +131,11 @@ export class FakeApi implements SyncApi {
     // No INSERT grant on notes: they are created through save_note only.
     if (table === 'notes') throw forbiddenError()
     this.validate(table, payload)
+    // docs/PLAN.md §4.6d: a file row never exists on the server before its object. Not a server
+    // rule (nothing enforces it there), so breaking it fails the test outright.
+    if (table === 'files' && !this.objects.has(String(payload.storage_path))) {
+      throw new Error('TEST INVARIANT: file row inserted before its Storage object')
+    }
     const id = payload.id as string
     if (this.tables[table].has(id)) {
       throw new ApiError('unique', 'duplicate key value violates unique constraint', '23505', 409)
@@ -136,7 +149,26 @@ export class FakeApi implements SyncApi {
       updated_at: time,
     } as unknown as AnyRow
     this.tables[table].set(id, row)
+    if (this.loseAnswerWhen(call)) throw networkError()
     return { ...row }
+  }
+
+  /**
+   * Storage upload with upsert off, like SupabaseStorageProvider: the editor policy on the
+   * path's space (the space must exist on the server), and "already exists" for a taken path.
+   */
+  async uploadObject(path: string, blob: Blob, contentType: string): Promise<void> {
+    const call: FakeCall = { method: 'uploadObject', id: path, payload: { size: blob.size } }
+    this.calls.push(call)
+    const failure = this.failWhen(call)
+    if (failure) throw failure
+    const spaceId = path.split('/')[0] ?? ''
+    if (!this.canEdit(spaceId)) throw forbiddenError()
+    if (this.objects.has(path)) {
+      throw new ApiError('unique', 'The resource already exists', 'BN_OBJECT_EXISTS', 409)
+    }
+    this.objects.set(path, { size: blob.size, type: contentType })
+    if (this.loseAnswerWhen(call)) throw networkError()
   }
 
   async update(
@@ -153,6 +185,7 @@ export class FakeApi implements SyncApi {
     this.validate(table, payload, existing)
     const row = { ...existing, ...payload, updated_at: this.nextTime() } as AnyRow
     this.tables[table].set(id, row)
+    if (this.loseAnswerWhen(call)) throw networkError()
     return [{ ...row }]
   }
 

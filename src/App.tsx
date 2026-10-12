@@ -6,6 +6,7 @@ import { AppShell } from './components/AppShell'
 import { NotFoundPage } from './components/NotFoundPage'
 import { UpdatePrompt } from './components/UpdatePrompt'
 import { LoginPage } from './features/auth/LoginPage'
+import { FilePage } from './features/files/FilePage'
 import { FolderPage } from './features/folders/FolderPage'
 import { FoldersPage } from './features/folders/FoldersPage'
 import { SearchPage } from './features/search/SearchPage'
@@ -34,6 +35,7 @@ export function App() {
                 </Suspense>
               }
             />
+            <Route path="file/:fileId" element={<FilePage />} />
             <Route path="search" element={<SearchPage />} />
             <Route path="tags" element={<TagsPage />} />
             <Route path="tags/:tag" element={<TagNotesPage />} />

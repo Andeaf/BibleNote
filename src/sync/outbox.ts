@@ -14,25 +14,31 @@ export interface EnqueueInput {
 export const outboxKey = (table: string, rowId: string): string => `${table}:${rowId}`
 
 /**
- * True when the entry creates its row on the server: an insert, or a save_note for a note the
- * server does not have yet. Such an entry follows every insert rule (docs/PLAN.md §4.2, §4.6b):
- * rows pointing at it wait, it waits for its space and parent folder, it moves to the root when
- * the folder is gone, and a resend after a lost answer continues as an update.
+ * True when the entry creates its row on the server: an insert, a file upload, or a save_note for
+ * a note the server does not have yet. Such an entry follows every insert rule (docs/PLAN.md
+ * §4.2, §4.6b): rows pointing at it wait, it waits for its space and parent folder, it moves to
+ * the root when the folder is gone, and a resend after a lost answer continues as an update.
  */
 export const createsRow = (entry: Pick<OutboxEntry, 'op' | 'base_version'>): boolean =>
-  entry.op === 'insert' || (entry.op === 'save_note' && entry.base_version == null)
+  entry.op === 'insert' ||
+  entry.op === 'upload' ||
+  (entry.op === 'save_note' && entry.base_version == null)
 
-/** An input can ride along with an existing entry: same op, or an update after an insert. */
+/**
+ * An input can ride along with an existing entry: same op, or an update after a direct insert
+ * (an insert or a file upload: the row is inserted with the final values).
+ */
 const canMerge = (entry: OutboxEntry, input: EnqueueInput): boolean =>
-  entry.op === input.op || (input.op === 'update' && entry.op === 'insert')
+  entry.op === input.op ||
+  (input.op === 'update' && (entry.op === 'insert' || entry.op === 'upload'))
 
 /**
  * Adds a change to the outbox, coalescing with an existing entry for the same row:
  * - same op (update + update, save_note + save_note): the payloads merge, the entry keeps its
  *   seq (so a folder created before a note stays ahead of it) and, for save_note, the base
  *   version of the first edit;
- * - update after a not-yet-sent insert: merged into the insert, the row reaches the server in its
- *   final state in one request. Note metadata never merges into a note create: update_note_meta
+ * - update after a not-yet-sent insert or upload: merged into it, the row reaches the server in
+ *   its final state in one request. Note metadata never merges into a note create: update_note_meta
  *   is always a separate entry behind the save_note (docs/PLAN.md §4.2);
  * - the search starts at the newest entry of the row and stops at one it cannot merge with that
  *   writes a column of this change: merging further back would let that later entry overwrite

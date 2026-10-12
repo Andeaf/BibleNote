@@ -1,3 +1,4 @@
+import { releaseBlob } from '@/lib/blobs'
 import type { NoteRow } from '@/lib/database.types'
 import type { BibleNoteDb } from '@/lib/db'
 import {
@@ -308,12 +309,17 @@ export class SyncEngine {
           blocked.add(key)
           break
         case 'convert_to_update':
-          await db.outbox.update(
-            seq,
-            entry.op === 'save_note'
-              ? { base_version: outcome.baseVersion, status: 'pending' }
-              : { op: 'update', status: 'pending' },
-          )
+          await db.transaction('rw', [db.outbox, db.blobs], async () => {
+            await db.outbox.update(
+              seq,
+              entry.op === 'save_note'
+                ? { base_version: outcome.baseVersion, status: 'pending' }
+                : { op: 'update', status: 'pending' },
+            )
+            // An upload only gets here after its object was confirmed, and the row exists:
+            // both stages are done, the blob is no longer needed for the upload.
+            if (entry.op === 'upload') await releaseBlob(db, entry.row_id, this.now())
+          })
           unsentInserts.delete(key)
           blocked.add(key)
           this.pushAgain = true
@@ -347,6 +353,7 @@ export class SyncEngine {
     const { api } = this.deps
     try {
       if (entry.op === 'save_note') return await this.sendSaveNote(entry)
+      if (entry.op === 'upload') return await this.sendUpload(entry)
       if (entry.op === 'insert') {
         const row = await api.insert(
           entry.table,
@@ -375,7 +382,8 @@ export class SyncEngine {
           await api.refreshAuth().catch(() => undefined)
           return { type: 'retry', error: error.message }
         case 'unique':
-          return entry.op === 'insert'
+          // The row already exists: our own insert, whose answer was lost.
+          return entry.op === 'insert' || entry.op === 'upload'
             ? { type: 'convert_to_update' }
             : { type: 'permanent', error: error.message }
         case 'validation':
@@ -392,6 +400,32 @@ export class SyncEngine {
           return { type: 'permanent', error: error.message }
       }
     }
+  }
+
+  /**
+   * A new file, in two stages (docs/PLAN.md §4.6d): first the Storage object, then the row, so
+   * no device ever sees a row whose file does not exist yet. The path is fixed
+   * ('{space_id}/{file_id}'): an object already there is our own earlier upload whose answer was
+   * lost, so "already exists" counts as success. Once the object is confirmed the entry
+   * remembers it, and a retry (network, 5xx, a lost answer) only inserts the row. Errors of
+   * either stage are classified like any other request by the caller.
+   */
+  private async sendUpload(entry: OutboxEntry): Promise<PushOutcome> {
+    const { db, api } = this.deps
+    if (!entry.uploaded) {
+      const stored = await db.blobs.get(entry.row_id)
+      if (!stored) return { type: 'permanent', error: 'BN_BLOB_MISSING' }
+      const path = String(entry.payload.storage_path)
+      const mime = String(entry.payload.mime || stored.blob.type || 'application/octet-stream')
+      try {
+        await api.uploadObject(path, stored.blob, mime)
+      } catch (error) {
+        if (!(error instanceof ApiError && error.kind === 'unique')) throw error
+      }
+      await db.outbox.update(entry.seq as number, { uploaded: true })
+    }
+    const row = await api.insert('files', pickColumns(entry.payload, INSERT_COLUMNS.files))
+    return { type: 'success', row }
   }
 
   /**
@@ -433,8 +467,10 @@ export class SyncEngine {
   private async afterSuccess(entry: OutboxEntry, row: AnyRow): Promise<void> {
     const { db } = this.deps
     const table = db.table(entry.table)
-    await db.transaction('rw', [table, db.outbox], async () => {
+    await db.transaction('rw', [table, db.outbox, db.blobs], async () => {
       await db.outbox.delete(entry.seq as number)
+      // Object and row confirmed: the blob stays only as an evictable cache entry.
+      if (entry.op === 'upload') await releaseBlob(db, entry.row_id, this.now())
       // Edits made while the request was in flight sit in later entries: keep them on top.
       const later = await this.rowEntries(entry)
       if (entry.op === 'save_note') {
@@ -577,13 +613,18 @@ export class SyncEngine {
     const rows = await api.fetchByIds(entry.table, [entry.row_id])
     const server = rows[0]
     const table = db.table(entry.table)
-    await db.transaction('rw', [table, db.outbox, db.spaceAccess], async () => {
+    await db.transaction('rw', [table, db.outbox, db.spaceAccess, db.blobs], async () => {
       await db.outbox.where('[table+row_id]').equals([entry.table, entry.row_id]).delete()
       if (server && !server.purged_at) {
         await table.put(server)
+        // The server has the file: its local copy is now only a cache entry.
+        if (entry.table === 'files') await releaseBlob(db, entry.row_id, this.now())
       } else {
         await table.delete(entry.row_id)
         if (entry.table === 'spaces') await db.spaceAccess.delete(entry.row_id)
+        // A file the server never got: its content goes with it. An object uploaded without
+        // its row is removed by the owner's orphan sweep (docs/PLAN.md §5.8).
+        if (entry.table === 'files') await db.blobs.delete(entry.row_id)
       }
     })
   }
@@ -717,9 +758,10 @@ export class SyncEngine {
         if (!reachable.has(spaceId)) continue
       }
       if (row.purged_at) {
-        await db.transaction('rw', [local, db.outbox], async () => {
+        await db.transaction('rw', [local, db.outbox, db.blobs], async () => {
           await local.delete(row.id)
           await db.outbox.where('[table+row_id]').equals([table, row.id]).delete()
+          if (table === 'files') await db.blobs.delete(row.id)
         })
         continue
       }
@@ -735,10 +777,10 @@ export class SyncEngine {
     const space = await db.spaces.get(spaceId)
     await db.transaction(
       'rw',
-      [db.spaces, db.folders, db.notes, db.files, db.members, db.spaceAccess, db.outbox],
+      [db.spaces, db.folders, db.notes, db.files, db.members, db.spaceAccess, db.outbox, db.blobs],
       async () => {
         await db.spaces.delete(spaceId)
-        for (const table of [db.folders, db.notes, db.files, db.members]) {
+        for (const table of [db.folders, db.notes, db.files, db.members, db.blobs]) {
           await table.where('space_id').equals(spaceId).delete()
         }
         await db.spaceAccess.delete(spaceId)
