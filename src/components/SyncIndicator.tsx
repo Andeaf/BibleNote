@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { AlertTriangle, CloudOff, RefreshCw, type LucideIcon } from 'lucide-react'
+import { AlertTriangle, CloudOff, RefreshCw, UploadCloud, type LucideIcon } from 'lucide-react'
 import { Link } from 'react-router'
 import { t } from '@/i18n/ro'
 import { useDb, useSyncState } from '@/sync/SyncContext'
@@ -20,11 +20,15 @@ interface IndicatorContent {
   spin: boolean
   to?: string
   count?: number
+  /** Upload progress, shown under the phone icon. */
+  percent?: number
 }
 
 /**
- * Three states worth showing: changes that failed (link to Settings), offline, and work in
- * progress. When everything is synced the bar says so quietly and the icon disappears.
+ * The states worth showing: changes that failed (link to Settings), offline (only when there is
+ * really no connection), file uploads on their own ("Se încarcă 2 fișiere · 45%", "1 fișier
+ * așteaptă conexiunea") and other work in progress. When everything is synced the bar says so
+ * quietly and the icon disappears.
  */
 export function SyncIndicator({ variant }: SyncIndicatorProps) {
   const db = useDb()
@@ -32,11 +36,20 @@ export function SyncIndicator({ variant }: SyncIndicatorProps) {
   const counts = useLiveQuery(async () => {
     const entries = await db.outbox.toArray()
     const failed = entries.filter((e) => e.status === 'failed').length
-    return { failed, pending: entries.length - failed }
+    // Files still being transferred are counted apart; their rows are ordinary pending work.
+    const uploads = entries.filter(
+      (e) => e.status !== 'failed' && e.op === 'upload' && !e.uploaded,
+    ).length
+    return { failed, uploads, pending: entries.length - failed - uploads }
   }, [db])
   const failed = counts?.failed ?? 0
   const pending = counts?.pending ?? 0
+  const uploads = counts?.uploads ?? 0
   const busy = pending > 0 || state.pushing || state.pulling
+  const transfer = state.transfer
+  const percent = transfer
+    ? Math.min(99, Math.floor((transfer.loaded / Math.max(1, transfer.total)) * 100))
+    : 0
 
   let content: IndicatorContent | null = null
   if (failed > 0) {
@@ -50,8 +63,23 @@ export function SyncIndicator({ variant }: SyncIndicatorProps) {
     }
   } else if (!state.online) {
     content = { icon: CloudOff, text: t.sync.offline, tone: 'text-muted', spin: false }
+  } else if (transfer) {
+    content = {
+      icon: UploadCloud,
+      text: t.sync.uploading(Math.max(1, uploads), percent),
+      tone: 'text-accent',
+      spin: false,
+      percent,
+    }
   } else if (busy) {
     content = { icon: RefreshCw, text: t.sync.syncing, tone: 'text-muted', spin: true }
+  } else if (uploads > 0) {
+    content = {
+      icon: UploadCloud,
+      text: t.sync.uploadWaiting(uploads),
+      tone: 'text-muted',
+      spin: false,
+    }
   } else if (variant === 'bar') {
     content = { icon: RefreshCw, text: t.sync.upToDate, tone: 'text-muted', spin: false }
   }
@@ -91,6 +119,15 @@ export function SyncIndicator({ variant }: SyncIndicatorProps) {
         {content.count > 9 ? '9+' : content.count}
       </span>
     ) : null
+  const progress =
+    content.percent !== undefined ? (
+      <span
+        aria-hidden="true"
+        className="absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[10px] leading-3 font-semibold tabular-nums"
+      >
+        {content.percent}%
+      </span>
+    ) : null
   return content.to ? (
     <Link to={content.to} className={className} aria-label={content.text} title={content.text}>
       {glyph}
@@ -99,6 +136,7 @@ export function SyncIndicator({ variant }: SyncIndicatorProps) {
   ) : (
     <span role="status" aria-label={content.text} title={content.text} className={className}>
       {glyph}
+      {progress}
     </span>
   )
 }

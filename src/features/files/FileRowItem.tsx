@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  Clock,
   CloudOff,
   File as FileIcon,
   FileText,
@@ -31,11 +32,17 @@ export function FileKindIcon({ file, className }: { file: FileRow; className: st
 export function UploadBadge({ state }: { state: UploadState | undefined }) {
   if (!state) return null
   const [Icon, text, tone] =
-    state === 'failed'
+    state.kind === 'failed'
       ? [AlertTriangle, t.files.uploadFailed, 'text-danger']
-      : state === 'waiting'
+      : state.kind === 'waiting'
         ? [CloudOff, t.files.waiting, 'text-muted']
-        : [UploadCloud, t.files.uploading, 'text-accent']
+        : state.kind === 'queued'
+          ? [Clock, t.files.queued, 'text-muted']
+          : [
+              UploadCloud,
+              state.percent === null ? t.files.uploading : t.files.uploadingPercent(state.percent),
+              'text-accent',
+            ]
   return (
     <span className={`inline-flex items-center gap-1 ${tone}`}>
       <Icon className="size-3.5" aria-hidden="true" />

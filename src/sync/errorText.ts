@@ -3,6 +3,7 @@ import { t } from '@/i18n/ro'
 /** Romanian text for a sync error code stored on a failed outbox entry. */
 export function syncErrorText(error: string | null): string {
   const code = error ?? ''
+  if (code === 'BN_ACCESS_LOST') return t.sync.errors.accessLost
   if (
     code === 'BN_NO_ROWS' ||
     /BN_FORBIDDEN|42501|row-level security|permission denied/i.test(code)

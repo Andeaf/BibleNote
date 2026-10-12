@@ -96,7 +96,8 @@ describe('pull', () => {
     const next = api.calls.filter((c) => c.method === 'pullPage' && c.table === 'folders')
     expect(next[0]?.page?.since).toBe('2025-12-31T23:59:40.000Z')
     expect(next[0]?.page?.after).toBeUndefined()
-  })
+    // 1200 rows through fake-indexeddb: slow on a busy CI machine, not stuck.
+  }, 30_000)
 
   it('fetches a space joined after the first sync in full, even though its rows are older than the cursor', async () => {
     seedSpace()

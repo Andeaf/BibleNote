@@ -36,10 +36,29 @@ export interface OutboxEntry {
    */
   base_version?: number | null
   /**
-   * upload only: the Storage object is confirmed (first stage), so a retry only inserts the row.
-   * The object always exists before the row (docs/PLAN.md §4.6d).
+   * upload only: the Storage object is confirmed. Until then the file is transferred by the
+   * separate transfer lane and the main queue skips the entry (it still counts as an unsent
+   * create); afterwards the main queue inserts the row. The object always exists before the row
+   * (docs/PLAN.md §4.6d).
    */
   uploaded?: boolean
+  /** upload only: network failures of the transfer in a row while online (the pause ladder). */
+  transfer_failures?: number
+  /** upload only: the transfer waits until then (engine clock, ms). */
+  next_transfer_at?: number
+}
+
+/** Progress and cancellation of one file transfer. */
+export interface TransferOptions {
+  signal?: AbortSignal
+  onProgress?: (loaded: number, total: number) => void
+}
+
+/** The transfer in progress, for the indicator and the file list. */
+export interface TransferProgress {
+  rowId: string
+  loaded: number
+  total: number
 }
 
 export type AnyRow = Record<string, unknown> & { id: string; updated_at: string }
@@ -96,7 +115,12 @@ export interface SyncApi {
    * Stores a file object at its fixed path ('{space_id}/{file_id}'). Throws ApiError 'unique'
    * when the path already holds an object, e.g. our own upload whose answer was lost.
    */
-  uploadObject(path: string, blob: Blob, contentType: string): Promise<void>
+  uploadObject(
+    path: string,
+    blob: Blob,
+    contentType: string,
+    options?: TransferOptions,
+  ): Promise<void>
   /** The save_note RPC: inserts a new note, or updates the content when the version matches. */
   saveNote(note: Record<string, unknown>, baseVersion: number | null): Promise<SaveNoteResponse>
   touchPresence(): Promise<void>
@@ -121,4 +145,6 @@ export interface SyncState {
   pushing: boolean
   lastPullAt: number | null
   lastError: string | null
+  /** The file being transferred right now (one at a time), or null. */
+  transfer: TransferProgress | null
 }

@@ -7,6 +7,7 @@ import {
   type SaveNoteResponse,
   type ServerTable,
   type SyncApi,
+  type TransferOptions,
   type WritableTable,
 } from '../types'
 
@@ -52,6 +53,12 @@ export class FakeApi implements SyncApi {
    * the server, the client gets a network error), as on a dropped mobile connection.
    */
   loseAnswerWhen: (call: FakeCall) => boolean = () => false
+  /**
+   * While set, uploads hang before storing anything (a stalled transfer) until `releaseUploads`
+   * or until their signal aborts them.
+   */
+  holdUploads = false
+  private held: Array<() => void> = []
   /** Ids whose updates are denied by "RLS" (0 rows). */
   denied = new Set<string>()
   /** Consulted before every insert/update; return an error to throw it. */
@@ -157,9 +164,21 @@ export class FakeApi implements SyncApi {
    * Storage upload with upsert off, like SupabaseStorageProvider: the editor policy on the
    * path's space (the space must exist on the server), and "already exists" for a taken path.
    */
-  async uploadObject(path: string, blob: Blob, contentType: string): Promise<void> {
+  async uploadObject(
+    path: string,
+    blob: Blob,
+    contentType: string,
+    options?: TransferOptions,
+  ): Promise<void> {
     const call: FakeCall = { method: 'uploadObject', id: path, payload: { size: blob.size } }
     this.calls.push(call)
+    if (this.holdUploads) {
+      await new Promise<void>((resolve, reject) => {
+        this.held.push(resolve)
+        options?.signal?.addEventListener('abort', () => reject(abortError()), { once: true })
+      })
+    }
+    if (options?.signal?.aborted) throw abortError()
     const failure = this.failWhen(call)
     if (failure) throw failure
     const spaceId = path.split('/')[0] ?? ''
@@ -167,8 +186,20 @@ export class FakeApi implements SyncApi {
     if (this.objects.has(path)) {
       throw new ApiError('unique', 'The resource already exists', 'BN_OBJECT_EXISTS', 409)
     }
+    options?.onProgress?.(blob.size, blob.size)
     this.objects.set(path, { size: blob.size, type: contentType })
     if (this.loseAnswerWhen(call)) throw networkError()
+  }
+
+  /** Lets held uploads go on. */
+  releaseUploads(): void {
+    this.holdUploads = false
+    for (const resolve of this.held.splice(0)) resolve()
+  }
+
+  /** Uploads waiting in `holdUploads`. */
+  get heldUploads(): number {
+    return this.held.length
   }
 
   async update(
@@ -311,6 +342,7 @@ export class FakeApi implements SyncApi {
 }
 
 export const networkError = () => new ApiError('network', 'TypeError: Failed to fetch')
+export const abortError = () => new ApiError('network', 'BN_ABORTED')
 export const fkError = () =>
   new ApiError('fk', 'insert or update violates foreign key constraint', '23503', 409)
 export const serverError = () => new ApiError('server', 'internal error', 'PGRST000', 503)

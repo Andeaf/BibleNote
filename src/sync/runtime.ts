@@ -2,7 +2,7 @@ import { liveQuery } from 'dexie'
 import { deleteDb, openDb, type BibleNoteDb } from '@/lib/db'
 import type { StorageProvider } from '@/lib/storage/StorageProvider'
 import { createSupabaseStorageProvider } from '@/lib/storage/SupabaseStorageProvider'
-import { supabase } from '@/lib/supabase'
+import { supabase, supabaseEndpoint } from '@/lib/supabase'
 import { SyncEngine } from './engine'
 import { createRealtimeHub } from './realtime'
 import { createStore, type Store } from './store'
@@ -42,7 +42,7 @@ export interface SyncRuntime {
  */
 export function createSyncRuntime(userId: string): SyncRuntime {
   const db = openDb(userId)
-  const storage = createSupabaseStorageProvider(supabase)
+  const storage = createSupabaseStorageProvider(supabase, supabaseEndpoint)
   const api = createSupabaseApi(supabase, storage)
   const notices = createStore<Notice[]>([])
   let nextNoticeId = 1
@@ -57,6 +57,7 @@ export function createSyncRuntime(userId: string): SyncRuntime {
     userId,
     onNotice: notify,
     onPushed: (spaceIds) => hub.broadcast(spaceIds),
+    isOnline: () => navigator.onLine,
   })
 
   return {
@@ -74,14 +75,17 @@ export function createSyncRuntime(userId: string): SyncRuntime {
       hub.setAuth(accessToken)
       void navigator.storage?.persist?.()
 
-      const onOnline = () => engine.setOnline(true)
+      const onOnline = () => engine.connectionRestored()
       const onOffline = () => engine.setOnline(false)
       const onVisible = () => {
-        if (document.visibilityState === 'visible') {
+        const visible = document.visibilityState === 'visible'
+        engine.setVisible(visible)
+        if (visible) {
           engine.requestPull()
           engine.requestPush(0)
         }
       }
+      engine.setVisible(document.visibilityState === 'visible')
       window.addEventListener('online', onOnline)
       window.addEventListener('offline', onOffline)
       document.addEventListener('visibilitychange', onVisible)

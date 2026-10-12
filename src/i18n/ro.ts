@@ -97,6 +97,12 @@ export const ro = {
     upToDate: 'Sincronizat',
     failedCount: (n: number) =>
       n === 1 ? '1 modificare nesincronizată' : `${n} ${de(n)}modificări nesincronizate`,
+    uploading: (n: number, percent: number) =>
+      n === 1
+        ? `Se încarcă 1 fișier · ${percent}%`
+        : `Se încarcă ${n} ${de(n)}fișiere · ${percent}%`,
+    uploadWaiting: (n: number) =>
+      n === 1 ? '1 fișier așteaptă conexiunea' : `${n} ${de(n)}fișiere așteaptă conexiunea`,
     accessLost: (name: string) => `Nu mai ai acces la „${name}”.`,
     movedToRoot: (name: string) =>
       `Folderul părinte nu mai există, așa că „${name}” a fost mutat în rădăcină.`,
@@ -110,6 +116,8 @@ export const ro = {
       folderNotInSpace: 'Folderul țintă e în alt folder principal.',
       cycle: 'Un folder nu poate fi mutat în interiorul lui.',
       blobMissing: 'Conținutul fișierului nu mai e pe acest dispozitiv.',
+      accessLost:
+        'Nu mai ai acces la folderul principal. Descarcă sau copiază conținutul, apoi renunță.',
       fileTooLarge: 'Fișierul depășește limita de 50 MB.',
       generic: (code: string) => `Eroare de sincronizare (${code}).`,
     },
@@ -196,7 +204,9 @@ export const ro = {
     unreadableImage: (name: string) =>
       `Imaginea „${name}” nu a putut fi deschisă. Încearcă o poză JPEG sau PNG.`,
     uploading: 'Se încarcă…',
-    waiting: 'Așteaptă internetul',
+    uploadingPercent: (percent: number) => `Se încarcă… ${percent}%`,
+    queued: 'În așteptare',
+    waiting: 'Așteaptă conexiunea',
     uploadFailed: 'Neîncărcat',
     filter: 'Filtrează după tip',
     types: {
@@ -259,7 +269,17 @@ export const ro = {
       'Nu am acces la microfon. Permite microfonul pentru BibleNote din setările telefonului sau ale browserului.',
     unsupported: 'Browserul acesta nu poate înregistra audio.',
     failed: 'Înregistrarea nu a putut porni. Încearcă din nou.',
-    interrupted: 'Înregistrarea s-a oprit. Ce s-a înregistrat a fost salvat.',
+    micStopped: 'Înregistrarea s-a oprit. Ce s-a înregistrat a fost salvat.',
+    micInterrupted: (at: string) =>
+      `Microfonul a fost întrerupt la minutul ${at} (ecran blocat sau apel).`,
+    iosHint: 'Ține aplicația deschisă și ecranul aprins cât înregistrezi.',
+    storageFull: (saved: string) => `Nu mai e loc pe telefon. Am salvat primele ${saved} min.`,
+    writeFailed: (saved: string) =>
+      `Înregistrarea s-a oprit din cauza unei erori. Am salvat primele ${saved} min.`,
+    saveFailed:
+      'Înregistrarea nu s-a putut salva acum. Ce s-a înregistrat a rămas pe telefon; la următoarea pornire a aplicației o poți salva.',
+    storageFullNotSaved:
+      'Nu mai e loc pe telefon, iar înregistrarea nu s-a putut salva. Ce s-a înregistrat a rămas pe telefon: fă loc și redeschide aplicația ca să o salvezi.',
     saved: (name: string) => `„${name}” a fost salvată.`,
     recoverTitle: 'Ai o înregistrare neterminată',
     recoverHint: (name: string, duration: string) =>
@@ -306,6 +326,16 @@ export const ro = {
     unsyncedEmpty: 'Toate modificările sunt sincronizate.',
     retry: 'Reîncearcă',
     discard: 'Renunță',
+    discardTitle: 'Renunți la modificare?',
+    discardFile: (name: string) =>
+      `Fișierul „${name}” nu a ajuns pe server. Dacă renunți, se șterge de pe acest dispozitiv. Descarcă-l întâi dacă vrei să-l păstrezi.`,
+    discardNote: (name: string) =>
+      `Textul notiței „${name}” de pe acest dispozitiv se pierde. Copiază-l întâi dacă vrei să-l păstrezi.`,
+    discardOther:
+      'Modificarea de pe acest dispozitiv se pierde, iar elementul revine la varianta de pe server.',
+    copyText: 'Copiază textul',
+    copied: 'Textul a fost copiat.',
+    copyFailed: 'Textul nu s-a putut copia.',
     signOutTitle: 'Te deconectezi?',
     signOutUnsynced: (n: number) =>
       `Ai ${n} ${n === 1 ? 'modificare nesincronizată' : `${de(n)}modificări nesincronizate`}. Dacă te deconectezi acum, se pierd.`,

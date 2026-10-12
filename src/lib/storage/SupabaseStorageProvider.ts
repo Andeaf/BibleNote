@@ -45,18 +45,77 @@ export function toStorageApiError(error: StorageFailure): ApiError {
   return new ApiError('unknown', message, code, status)
 }
 
-/** Files in the private Supabase bucket `files`; access follows has_space_access (§3.4). */
-export function createSupabaseStorageProvider(client: SupabaseClient<Database>): StorageProvider {
+const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/')
+
+export interface StorageEndpoint {
+  /** VITE_SUPABASE_URL */
+  url: string
+  /** VITE_SUPABASE_PUBLISHABLE_KEY */
+  key: string
+}
+
+/**
+ * Files in the private Supabase bucket `files`; access follows has_space_access (§3.4).
+ * Uploads use XMLHttpRequest against the Storage REST API (what supabase-js does with fetch),
+ * because only XHR reports upload progress and can be cancelled when a transfer stalls.
+ */
+export function createSupabaseStorageProvider(
+  client: SupabaseClient<Database>,
+  endpoint: StorageEndpoint,
+): StorageProvider {
   const bucket = () => client.storage.from(BUCKET)
   return {
-    async upload(path, blob, contentType) {
-      // upsert off: the bucket has no UPDATE policy, and an object is never replaced.
-      const { error } = await bucket().upload(path, blob, {
-        contentType,
-        upsert: false,
-        cacheControl: '3600',
+    async upload(path, blob, contentType, options) {
+      const { data } = await client.auth.getSession()
+      const token = data.session?.access_token ?? endpoint.key
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        const signal = options?.signal
+        const onAbort = () => xhr.abort()
+        const done = () => signal?.removeEventListener('abort', onAbort)
+        xhr.open('POST', `${endpoint.url}/storage/v1/object/${BUCKET}/${encodePath(path)}`)
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+        xhr.setRequestHeader('apikey', endpoint.key)
+        // upsert off: the bucket has no UPDATE policy, and an object is never replaced.
+        xhr.setRequestHeader('x-upsert', 'false')
+        xhr.setRequestHeader('Content-Type', contentType || 'application/octet-stream')
+        xhr.upload.onprogress = (event) =>
+          options?.onProgress?.(event.loaded, event.lengthComputable ? event.total : blob.size)
+        xhr.onload = () => {
+          done()
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve()
+            return
+          }
+          let body: { message?: string; error?: string; statusCode?: string } = {}
+          try {
+            body = JSON.parse(xhr.responseText) as typeof body
+          } catch {
+            /* not JSON: the status decides */
+          }
+          reject(
+            toStorageApiError({
+              message: body.message ?? body.error ?? `HTTP ${xhr.status}`,
+              status: xhr.status,
+              statusCode: body.statusCode,
+            }),
+          )
+        }
+        xhr.onerror = () => {
+          done()
+          reject(new ApiError('network', 'Upload failed: network error'))
+        }
+        xhr.onabort = () => {
+          done()
+          reject(new ApiError('network', 'BN_ABORTED'))
+        }
+        if (signal?.aborted) {
+          reject(new ApiError('network', 'BN_ABORTED'))
+          return
+        }
+        signal?.addEventListener('abort', onAbort, { once: true })
+        xhr.send(blob)
       })
-      if (error) throw toStorageApiError(error)
     },
 
     async getUrl(path, downloadAs) {

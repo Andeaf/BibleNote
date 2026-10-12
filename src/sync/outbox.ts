@@ -25,6 +25,19 @@ export const createsRow = (entry: Pick<OutboxEntry, 'op' | 'base_version'>): boo
   (entry.op === 'save_note' && entry.base_version == null)
 
 /**
+ * Rows a not-yet-confirmed create (insert, upload, save_note of a new note) will make: anything
+ * that points at them must wait. Failed creates count too: a child of a parent that failed waits
+ * until the parent is retried or discarded, instead of failing (or moving to the root) alone.
+ */
+export function unsentCreateKeys(entries: readonly OutboxEntry[]): Set<string> {
+  const keys = new Set<string>()
+  for (const entry of entries) {
+    if (createsRow(entry)) keys.add(outboxKey(entry.table, entry.row_id))
+  }
+  return keys
+}
+
+/**
  * An input can ride along with an existing entry: same op, or an update after a direct insert
  * (an insert or a file upload: the row is inserted with the final values).
  */

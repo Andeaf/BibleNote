@@ -6,7 +6,7 @@ import { t } from '@/i18n/ro'
 import { formatDuration } from '@/lib/files'
 import { defaultRecordingName } from '@/lib/recording'
 import { useSyncRuntime } from '@/sync/SyncContext'
-import { AudioRecorder } from './AudioRecorder'
+import { AudioRecorder, type StopReason } from './AudioRecorder'
 
 interface RecorderDialogProps {
   spaceId: string
@@ -18,7 +18,29 @@ const ERRORS = {
   denied: t.recorder.micDenied,
   unsupported: t.recorder.unsupported,
   failed: t.recorder.failed,
+  save: t.recorder.saveFailed,
 } as const
+
+/** iPhone and iPad (iPadOS reports itself as a Mac with touch). */
+const isIos = () =>
+  typeof navigator !== 'undefined' &&
+  (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
+
+const minutes = (ms: number) => formatDuration(ms / 1000)
+
+function finishedText(reason: StopReason, name: string, savedMs: number): string {
+  switch (reason) {
+    case 'storage':
+      return t.recorder.storageFull(minutes(savedMs))
+    case 'error':
+      return t.recorder.writeFailed(minutes(savedMs))
+    case 'microphone':
+      return t.recorder.micStopped
+    case 'user':
+      return t.recorder.saved(name)
+  }
+}
 
 /**
  * "Înregistrare audio": big button, timer, pause/resume, name with date and time. The dialog
@@ -29,14 +51,15 @@ export function RecorderDialog({ spaceId, folderId, onClose }: RecorderDialogPro
   const [name, setName] = useState(() => defaultRecordingName(new Date()))
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const [recorder] = useState(() => new AudioRecorder(db, userId))
+  const [ios] = useState(isIos)
   const state = useSyncExternalStore(recorder.state.subscribe, recorder.state.get)
 
   function start() {
-    void recorder.start({ spaceId, folderId, name }, (rows, interrupted) => {
+    void recorder.start({ spaceId, folderId, name }, (rows, reason) => {
       engine.requestPush(0)
       notify({
         kind: 'message',
-        text: interrupted ? t.recorder.interrupted : t.recorder.saved(rows[0]?.name ?? name),
+        text: finishedText(reason, rows[0]?.name ?? name, recorder.state.get().savedMs),
       })
       onClose()
     })
@@ -118,8 +141,24 @@ export function RecorderDialog({ spaceId, folderId, onClose }: RecorderDialogPro
             {state.status === 'saving' && t.common.loading}
             {state.part > 1 && active && ` · ${t.recorder.part(state.part)}`}
           </p>
+          {state.interruptions.length > 0 && (
+            <div role="alert" className="w-full space-y-1">
+              {state.interruptions.map((at) => (
+                <p
+                  key={at}
+                  className="rounded-xl border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
+                >
+                  {t.recorder.micInterrupted(minutes(at))}
+                </p>
+              ))}
+            </div>
+          )}
 
-          {state.status === 'idle' || state.status === 'starting' ? (
+          {state.status === 'failed' ? (
+            <button type="button" className="btn btn-primary" onClick={onClose}>
+              {t.common.close}
+            </button>
+          ) : state.status === 'idle' || state.status === 'starting' ? (
             <button
               type="button"
               onClick={start}
@@ -155,18 +194,25 @@ export function RecorderDialog({ spaceId, folderId, onClose }: RecorderDialogPro
               </button>
             </div>
           )}
-          <p className="text-center text-sm font-medium">
-            {state.status === 'idle' || state.status === 'starting'
-              ? t.recorder.start
-              : t.recorder.stop}
-          </p>
+          {state.status !== 'failed' && (
+            <p className="text-center text-sm font-medium">
+              {state.status === 'idle' || state.status === 'starting'
+                ? t.recorder.start
+                : t.recorder.stop}
+            </p>
+          )}
 
           {state.error && (
             <p className="w-full rounded-xl border border-line px-3 py-2 text-sm text-danger">
-              {ERRORS[state.error]}
+              {state.error === 'save' && state.reason === 'storage'
+                ? t.recorder.storageFullNotSaved
+                : ERRORS[state.error]}
             </p>
           )}
-          {active && (
+          {ios && state.status !== 'failed' && (
+            <p className="text-center text-sm font-medium">{t.recorder.iosHint}</p>
+          )}
+          {active && !ios && (
             <p className="text-center text-sm text-muted">
               {state.wakeLock ? t.recorder.screenStaysOn : t.recorder.keepScreenOn}
             </p>

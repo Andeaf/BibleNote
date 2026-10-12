@@ -1,4 +1,4 @@
-import { releaseBlob } from '@/lib/blobs'
+import { releaseBlob, trimCache } from '@/lib/blobs'
 import type { NoteRow } from '@/lib/database.types'
 import type { BibleNoteDb } from '@/lib/db'
 import {
@@ -10,8 +10,9 @@ import {
   pickColumns,
 } from './columns'
 import { conflictCopy, conflictKey, localDisplayName } from './conflicts'
-import { createsRow, enqueue, outboxKey } from './outbox'
+import { createsRow, enqueue, outboxKey, unsentCreateKeys } from './outbox'
 import { createStore, type Store } from './store'
+import { TransferLane } from './transfers'
 import {
   ApiError,
   type AnyRow,
@@ -49,6 +50,11 @@ export interface EngineDeps {
   /** Timer used to wake up scheduled retries; injectable for tests. */
   setTimer?: (fn: () => void, ms: number) => unknown
   clearTimer?: (handle: unknown) => void
+  /**
+   * What the device says about its connection (navigator.onLine). A failed file transfer while
+   * this is true pauses the transfer lane; while false the lane waits for the `online` event.
+   */
+  isOnline?: () => boolean
 }
 
 type PushOutcome =
@@ -61,6 +67,9 @@ type PushOutcome =
   | { type: 'convert_to_update'; baseVersion?: number }
   | { type: 'conflict'; row: AnyRow }
   | { type: 'gone' }
+
+/** Error of changes kept after the access to their main folder was lost. */
+export const ACCESS_LOST = 'BN_ACCESS_LOST'
 
 export const backoffMs = (attempts: number): number => Math.min(60_000, 1000 * 2 ** (attempts - 1))
 
@@ -78,7 +87,10 @@ export class SyncEngine {
     pushing: false,
     lastPullAt: null,
     lastError: null,
+    transfer: null,
   })
+  /** File transfers of `upload` entries, on their own lane (docs/PLAN.md §4.6d). */
+  readonly transfers: TransferLane
   private pushPromise: Promise<void> | null = null
   private pushAgain = false
   private pullPromise: Promise<void> | null = null
@@ -99,6 +111,19 @@ export class SyncEngine {
     this.setTimer = deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms))
     this.clearTimer =
       deps.clearTimer ?? ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>))
+    this.transfers = new TransferLane({
+      db: deps.db,
+      api: deps.api,
+      now: this.now,
+      setTimer: this.setTimer,
+      clearTimer: this.clearTimer,
+      isOnline: deps.isOnline ?? (() => true),
+      maxAttempts: MAX_ATTEMPTS,
+      backoffMs,
+      onUploaded: () => void this.push(),
+      onProgress: (transfer) => this.state.update({ transfer }),
+      markFailed: (entry, error) => this.markFailed(entry, error),
+    })
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -126,7 +151,19 @@ export class SyncEngine {
     void this.pull()
   }
 
+  /** The page went to the background or came back (a transfer cut in the background is retried). */
+  setVisible(visible: boolean): void {
+    this.transfers.setVisible(visible)
+  }
+
+  /** The `online` event: the connection is back, transfer pauses start over. */
+  connectionRestored(): void {
+    void this.transfers.resetPauses()
+    this.setOnline(true)
+  }
+
   dispose(): void {
+    this.transfers.dispose()
     if (this.pushTimer) clearTimeout(this.pushTimer)
     this.pushTimer = null
     if (this.retryTimer !== null) this.clearTimer(this.retryTimer)
@@ -180,8 +217,12 @@ export class SyncEngine {
   // Push
   // ---------------------------------------------------------------------------------------------
 
-  /** Processes the outbox; a call during a run queues one more pass and awaits the whole thing. */
+  /**
+   * Processes the outbox; a call during a run queues one more pass and awaits the whole thing.
+   * Also starts the transfer lane, which runs on its own and is never awaited here.
+   */
   push(): Promise<void> {
+    void this.transfers.run()
     if (this.pushPromise) {
       this.pushAgain = true
       return this.pushPromise
@@ -208,19 +249,6 @@ export class SyncEngine {
     }
   }
 
-  /**
-   * Rows a not-yet-confirmed create (insert, or save_note of a new note) will make: anything that
-   * points at them must wait. Failed creates count too: a child of a parent that failed waits
-   * until the parent is retried or discarded, instead of failing (or moving to the root) alone.
-   */
-  private unsentInsertKeys(entries: readonly OutboxEntry[]): Set<string> {
-    const keys = new Set<string>()
-    for (const entry of entries) {
-      if (createsRow(entry)) keys.add(outboxKey(entry.table, entry.row_id))
-    }
-    return keys
-  }
-
   /** The space and parent folder this entry points at, as outbox keys. */
   private dependenciesOf(entry: OutboxEntry): string[] {
     const deps: string[] = []
@@ -236,7 +264,7 @@ export class SyncEngine {
     const entries = await db.outbox.orderBy('seq').toArray()
     const blocked = new Set<string>()
     const touchedSpaces = new Set<string>()
-    const unsentInserts = this.unsentInsertKeys(entries)
+    const unsentInserts = unsentCreateKeys(entries)
     let waitedForParent = false
     let succeeded = false
 
@@ -250,6 +278,12 @@ export class SyncEngine {
       const entry = await db.outbox.get(snapshot.seq as number)
       if (!entry) continue
       if (entry.status !== 'pending' || entry.next_attempt_at > this.now()) {
+        blocked.add(key)
+        continue
+      }
+      // Its file is still on the transfer lane: the row waits without using attempts (and its
+      // entry still counts as an unsent create), the rest of the queue goes on.
+      if (entry.op === 'upload' && !entry.uploaded) {
         blocked.add(key)
         continue
       }
@@ -320,6 +354,7 @@ export class SyncEngine {
             // both stages are done, the blob is no longer needed for the upload.
             if (entry.op === 'upload') await releaseBlob(db, entry.row_id, this.now())
           })
+          if (entry.op === 'upload') await trimCache(db)
           unsentInserts.delete(key)
           blocked.add(key)
           this.pushAgain = true
@@ -345,7 +380,7 @@ export class SyncEngine {
     const deps = this.dependenciesOf(entry)
     if (deps.length === 0) return false
     const entries = await this.deps.db.outbox.toArray()
-    const unsent = this.unsentInsertKeys(entries)
+    const unsent = unsentCreateKeys(entries)
     return deps.some((dep) => unsent.has(dep))
   }
 
@@ -403,28 +438,15 @@ export class SyncEngine {
   }
 
   /**
-   * A new file, in two stages (docs/PLAN.md §4.6d): first the Storage object, then the row, so
-   * no device ever sees a row whose file does not exist yet. The path is fixed
-   * ('{space_id}/{file_id}'): an object already there is our own earlier upload whose answer was
-   * lost, so "already exists" counts as success. Once the object is confirmed the entry
-   * remembers it, and a retry (network, 5xx, a lost answer) only inserts the row. Errors of
-   * either stage are classified like any other request by the caller.
+   * The second stage of a new file (docs/PLAN.md §4.6d): its row, inserted only after the
+   * transfer lane confirmed the Storage object (`uploaded`; until then the entry is skipped),
+   * so no device ever sees a row whose file does not exist yet. A 23505 continues as an update.
    */
   private async sendUpload(entry: OutboxEntry): Promise<PushOutcome> {
-    const { db, api } = this.deps
-    if (!entry.uploaded) {
-      const stored = await db.blobs.get(entry.row_id)
-      if (!stored) return { type: 'permanent', error: 'BN_BLOB_MISSING' }
-      const path = String(entry.payload.storage_path)
-      const mime = String(entry.payload.mime || stored.blob.type || 'application/octet-stream')
-      try {
-        await api.uploadObject(path, stored.blob, mime)
-      } catch (error) {
-        if (!(error instanceof ApiError && error.kind === 'unique')) throw error
-      }
-      await db.outbox.update(entry.seq as number, { uploaded: true })
-    }
-    const row = await api.insert('files', pickColumns(entry.payload, INSERT_COLUMNS.files))
+    const row = await this.deps.api.insert(
+      'files',
+      pickColumns(entry.payload, INSERT_COLUMNS.files),
+    )
     return { type: 'success', row }
   }
 
@@ -484,6 +506,8 @@ export class SyncEngine {
       const local = Object.assign({}, row, ...later.map((e) => e.payload)) as AnyRow
       await table.put(local)
     })
+    // The released blob counts towards the cache limit now.
+    if (entry.op === 'upload') await trimCache(db)
   }
 
   /**
@@ -596,6 +620,8 @@ export class SyncEngine {
       status: 'pending',
       attempts: 0,
       next_attempt_at: 0,
+      transfer_failures: 0,
+      next_transfer_at: 0,
       last_error: null,
     })
     await this.push()
@@ -604,14 +630,17 @@ export class SyncEngine {
   /**
    * Gives up the local changes of the entry's row: every queued change of that row goes and the
    * row becomes the server's version again (or disappears if the server never had it). The
-   * server is asked first, so offline this throws and nothing changes.
+   * server is asked first, so offline this throws and nothing changes. A change kept after the
+   * access was lost is simply dropped: the server would not show the row anyway.
    */
   async discard(seq: number): Promise<void> {
     const { db, api } = this.deps
     const entry = await db.outbox.get(seq)
     if (!entry) return
-    const rows = await api.fetchByIds(entry.table, [entry.row_id])
+    const accessLost = entry.last_error === ACCESS_LOST
+    const rows = accessLost ? [] : await api.fetchByIds(entry.table, [entry.row_id])
     const server = rows[0]
+    this.transfers.cancel(entry.row_id)
     const table = db.table(entry.table)
     await db.transaction('rw', [table, db.outbox, db.spaceAccess, db.blobs], async () => {
       await db.outbox.where('[table+row_id]').equals([entry.table, entry.row_id]).delete()
@@ -627,6 +656,7 @@ export class SyncEngine {
         if (entry.table === 'files') await db.blobs.delete(entry.row_id)
       }
     })
+    if (entry.table === 'files') await trimCache(db)
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -771,7 +801,13 @@ export class SyncEngine {
     }
   }
 
-  /** Access was lost (or the space was purged): drop everything of that space on this device. */
+  /**
+   * Access was lost (or the space was purged): everything of that space goes from this device,
+   * except what never reached the server and carries content: note text (save_note entries) and
+   * files not inserted yet (upload entries, with their blobs). Those stay, with their rows, as
+   * failed entries (`BN_ACCESS_LOST`) in "Nesincronizate", where they can be downloaded or
+   * copied before "Renunță" (docs/PLAN.md §4.6d). Nothing unsent disappears silently.
+   */
   private async removeSpaceLocally(spaceId: string, notify: boolean): Promise<void> {
     const { db } = this.deps
     const space = await db.spaces.get(spaceId)
@@ -779,12 +815,39 @@ export class SyncEngine {
       'rw',
       [db.spaces, db.folders, db.notes, db.files, db.members, db.spaceAccess, db.outbox, db.blobs],
       async () => {
+        const entries = await db.outbox.where('space_id').equals(spaceId).toArray()
+        const kept = entries.filter(
+          (e) =>
+            (e.table === 'notes' && e.op === 'save_note') ||
+            (e.table === 'files' && e.op === 'upload'),
+        )
+        const keptIds = new Set(kept.map((e) => e.row_id))
         await db.spaces.delete(spaceId)
-        for (const table of [db.folders, db.notes, db.files, db.members, db.blobs]) {
+        for (const table of [db.folders, db.members]) {
           await table.where('space_id').equals(spaceId).delete()
         }
+        await db.notes
+          .where('space_id')
+          .equals(spaceId)
+          .filter((n) => !keptIds.has(n.id))
+          .delete()
+        await db.files
+          .where('space_id')
+          .equals(spaceId)
+          .filter((f) => !keptIds.has(f.id))
+          .delete()
+        await db.blobs
+          .where('space_id')
+          .equals(spaceId)
+          .filter((b) => !keptIds.has(b.file_id))
+          .delete()
         await db.spaceAccess.delete(spaceId)
-        await db.outbox.where('space_id').equals(spaceId).delete()
+        await db.outbox.bulkDelete(
+          entries.filter((e) => !kept.includes(e)).map((e) => e.seq as number),
+        )
+        for (const entry of kept) {
+          await db.outbox.update(entry.seq as number, { status: 'failed', last_error: ACCESS_LOST })
+        }
       },
     )
     if (notify && space) this.deps.onNotice?.({ kind: 'access_lost', name: space.name })

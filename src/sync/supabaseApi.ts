@@ -104,8 +104,8 @@ export function createSupabaseApi(
       return data as unknown as SaveNoteResponse
     },
 
-    uploadObject(path, blob, contentType) {
-      return storage.upload(path, blob, contentType)
+    uploadObject(path, blob, contentType, options) {
+      return storage.upload(path, blob, contentType, options)
     },
 
     async refreshAuth() {

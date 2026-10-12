@@ -4,6 +4,9 @@ import type { Database } from './database.types'
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
 
+/** Project URL and publishable key, for the few requests made without supabase-js (uploads). */
+export const supabaseEndpoint = { url: url ?? 'http://localhost', key: key ?? 'missing' }
+
 /** False when the env vars are missing; main.tsx shows a configuration screen instead of the app. */
 export const isSupabaseConfigured = Boolean(url && key)
 

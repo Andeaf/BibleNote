@@ -35,25 +35,42 @@ export function useAllFiles(): FileRow[] | undefined {
   }, [db])
 }
 
-export type UploadState = 'uploading' | 'waiting' | 'failed'
+/**
+ * What the file list says about a file not on the server yet: being sent (with the transfer's
+ * percent, or null while its row is saved), queued behind another transfer, waiting for the
+ * connection (offline or paused after network failures), or failed.
+ */
+export type UploadState =
+  | { kind: 'uploading'; percent: number | null }
+  | { kind: 'queued' }
+  | { kind: 'waiting' }
+  | { kind: 'failed' }
 
-/** Files whose upload has not been confirmed yet, with what the list should say about them. */
 export function useUploadStates(): Map<string, UploadState> {
   const db = useDb()
-  const { online } = useSyncState()
-  const uploads = useLiveQuery(
-    async () =>
-      (await db.outbox.where('status').anyOf('pending', 'inflight', 'failed').toArray()).filter(
-        (e) => e.op === 'upload',
-      ),
-    [db],
-  )
+  const { online, transfer } = useSyncState()
+  const uploads = useLiveQuery(async () => {
+    const now = Date.now()
+    return (await db.outbox.toArray())
+      .filter((e) => e.op === 'upload')
+      .map((e) => ({
+        rowId: e.row_id,
+        failed: e.status === 'failed',
+        uploaded: e.uploaded === true,
+        paused: (e.next_transfer_at ?? 0) > now,
+      }))
+  }, [db])
   const states = new Map<string, UploadState>()
   for (const entry of uploads ?? []) {
-    states.set(
-      entry.row_id,
-      entry.status === 'failed' ? 'failed' : online ? 'uploading' : 'waiting',
-    )
+    let state: UploadState
+    if (entry.failed) state = { kind: 'failed' }
+    else if (entry.uploaded) state = { kind: 'uploading', percent: null }
+    else if (transfer?.rowId === entry.rowId) {
+      const percent = Math.floor((transfer.loaded / Math.max(1, transfer.total)) * 100)
+      state = { kind: 'uploading', percent: Math.min(99, percent) }
+    } else if (!online || entry.paused) state = { kind: 'waiting' }
+    else state = { kind: 'queued' }
+    states.set(entry.rowId, state)
   }
   return states
 }
