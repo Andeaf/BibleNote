@@ -39,8 +39,8 @@ interface ActiveTransfer {
  * in flight cannot touch it; a transfer cut by closing the app simply starts again.
  *
  * Failures: "already exists" is success (fixed path, our own earlier upload). A network failure
- * waits for the connection when the device is offline, waits for the page to be visible again
- * when it was cut in the background, and otherwise pauses the lane 1, 5, 15, then 60 minutes
+ * waits for the connection when the device is offline; cut in the background, it goes again
+ * when the page is visible (at once if it already is), and otherwise pauses the lane 1, 5, 15, then 60 minutes
  * (reset by the `online` event). A transfer without progress for 60 s is cancelled as a network
  * failure. 5xx / expired token: retried with the usual backoff, at most `maxAttempts` times.
  * Anything else fails the entry.
@@ -184,21 +184,42 @@ export class TransferLane {
     }
 
     if (this.disposed) return
-    // Discarded (or its space removed) meanwhile: nothing left to update.
-    const current = await db.outbox.get(seq)
-    if (!current) return
+    // Read and written in one transaction, so the entry cannot change in between. Discarded
+    // meanwhile: nothing left to update. Failed meanwhile (kept with BN_ACCESS_LOST when its
+    // space went, see removeSpaceLocally): a stored object only marks it uploaded, the rest of
+    // the entry stays as it is so "Renunță" still knows it.
+    const current = await db.transaction('rw', db.outbox, async () => {
+      const found = await db.outbox.get(seq)
+      if (!found || failure !== null) return found
+      await db.outbox.update(
+        seq,
+        found.status === 'failed'
+          ? { uploaded: true }
+          : {
+              uploaded: true,
+              transfer_failures: 0,
+              next_transfer_at: 0,
+              attempts: 0,
+              last_error: null,
+            },
+      )
+      return found
+    })
+    if (!current || current.status === 'failed') return
     if (failure === null) {
-      await db.outbox.update(seq, {
-        uploaded: true,
-        transfer_failures: 0,
-        next_transfer_at: 0,
-        attempts: 0,
-        last_error: null,
-      })
       this.deps.onUploaded()
       return
     }
     await this.handleFailure(current, failure, active)
+  }
+
+  /** Updates the entry unless it was discarded or failed meanwhile. */
+  private async updateOpen(seq: number, changes: Partial<OutboxEntry>): Promise<void> {
+    const { db } = this.deps
+    await db.transaction('rw', db.outbox, async () => {
+      const found = await db.outbox.get(seq)
+      if (found && found.status !== 'failed') await db.outbox.update(seq, changes)
+    })
   }
 
   private async handleFailure(
@@ -206,21 +227,24 @@ export class TransferLane {
     failure: unknown,
     active: ActiveTransfer,
   ): Promise<void> {
-    const { db, api, now } = this.deps
+    const { api, now } = this.deps
     const seq = entry.seq as number
     const message = failure instanceof Error ? failure.message : String(failure)
     const kind = failure instanceof ApiError ? failure.kind : 'unknown'
     if (kind === 'network') {
-      // Offline: the `online` event starts the lane again. Cut in the background: try again
-      // when the page is back. Neither is the connection's fault, so no pause grows.
+      // Offline: the `online` event starts the lane again. Cut in the background: neither is the
+      // connection's fault, so no pause grows. Still hidden: wait for the page to come back.
+      // Visible again already (the order of `visibilitychange` and the request's error or stall
+      // timer is not guaranteed, on iOS the page usually comes back first): go again at once,
+      // the loop picks the same entry. Waiting then would stop the lane until the next return.
       if (!this.deps.isOnline()) return
       if (active.hidden || !this.visible) {
-        this.waitForVisible = true
+        if (!this.visible) this.waitForVisible = true
         return
       }
       const failures = (entry.transfer_failures ?? 0) + 1
       const pause = TRANSFER_PAUSES_MS[Math.min(failures, TRANSFER_PAUSES_MS.length) - 1]
-      await db.outbox.update(seq, {
+      await this.updateOpen(seq, {
         transfer_failures: failures,
         next_transfer_at: now() + (pause as number),
         last_error: message,
@@ -233,7 +257,7 @@ export class TransferLane {
       if (attempts >= this.deps.maxAttempts) {
         await this.deps.markFailed(entry, message)
       } else {
-        await db.outbox.update(seq, {
+        await this.updateOpen(seq, {
           attempts,
           next_transfer_at: now() + this.deps.backoffMs(attempts),
           last_error: message,

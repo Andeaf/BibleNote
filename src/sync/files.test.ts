@@ -607,6 +607,28 @@ describe('4. the transfer lane', () => {
     expect(api.tables.files.size).toBe(1)
   })
 
+  it('the page is visible again before the error of a transfer cut in the background: it goes again at once', async () => {
+    seedSpace()
+    await engine.pull()
+    await newFile(SPACE, null)
+    api.holdUploads = true
+    void engine.push()
+    await until(() => api.heldUploads === 1)
+
+    // iOS: `visibilitychange` comes back first, the cut request (or its stall timer) fails after.
+    engine.setVisible(false)
+    engine.setVisible(true)
+    fireStall()
+    // No second return to the app needed, and no pause.
+    await until(() => api.heldUploads === 2)
+    expect(await pause()).toEqual([0, 0])
+
+    api.releaseUploads()
+    await flush()
+    expect(api.tables.files.size).toBe(1)
+    expect(await db.outbox.count()).toBe(0)
+  })
+
   it('a transfer without progress for 60 s is cancelled as a network failure', async () => {
     seedSpace()
     await engine.pull()
@@ -688,5 +710,97 @@ describe('changes that never reached the server survive a lost access', () => {
     expect(await db.outbox.count()).toBe(0)
     expect(await db.notes.count()).toBe(0)
     expect(await db.blobs.count()).toBe(0)
+  })
+
+  /** A shared space where I am an editor, pulled. */
+  async function sharedSpace() {
+    api.seed('spaces', { id: SPACE, owner_id: 'user-other', name: 'Shared', ...blank })
+    api.access.push({ id: SPACE, role: 'editor' })
+    await engine.pull()
+  }
+
+  const fetchCalls = () => api.calls.filter((c) => c.method === 'fetchByIds').length
+
+  it('losing access cancels the transfer in progress; the entry stays BN_ACCESS_LOST', async () => {
+    await sharedSpace()
+    const file = await newFile(SPACE, null)
+    api.holdUploads = true
+    void engine.push()
+    await until(() => api.heldUploads === 1)
+
+    api.access = []
+    clock += 60_000
+    await engine.pull()
+    // The cancelled request comes back as a network failure: nothing of it reaches the entry.
+    await until(async () => engine.state.get().transfer === null)
+    await engine.transfers.run()
+    const [entry] = await db.outbox.toArray()
+    expect([entry?.status, entry?.last_error, entry?.uploaded ?? false]).toEqual([
+      'failed',
+      'BN_ACCESS_LOST',
+      false,
+    ])
+    expect(await pause()).toEqual([0, 0])
+    expect(api.calls.filter((c) => c.method === 'uploadObject')).toHaveLength(1)
+    expect(await (await db.blobs.get(file.id))?.blob.text()).toBe('opus-bytes')
+
+    // "Renunță" still recognises it: dropped locally, the server is not asked.
+    online = false
+    const before = fetchCalls()
+    await engine.discard(entry?.seq as number)
+    expect(fetchCalls()).toBe(before)
+    expect(await db.outbox.count()).toBe(0)
+    expect(await db.files.count()).toBe(0)
+    expect(await db.blobs.count()).toBe(0)
+  })
+
+  it('a transfer that ends after its entry failed only marks it uploaded', async () => {
+    await sharedSpace()
+    await newFile(SPACE, null)
+    api.holdUploads = true
+    void engine.push()
+    await until(() => api.heldUploads === 1)
+
+    // The object is stored just before the access is gone, too late for the cancel to stop it.
+    const [held] = await db.outbox.toArray()
+    await db.outbox.update(held?.seq as number, {
+      status: 'failed',
+      last_error: 'BN_ACCESS_LOST',
+      attempts: 2,
+    })
+    api.releaseUploads()
+    await until(async () => engine.state.get().transfer === null)
+    await flush()
+
+    const [entry] = await db.outbox.toArray()
+    expect(entry).toMatchObject({
+      status: 'failed',
+      last_error: 'BN_ACCESS_LOST',
+      attempts: 2,
+      uploaded: true,
+    })
+    expect(api.tables.files.size).toBe(0)
+    expect(notices.filter((n) => n.kind === 'failed')).toEqual([])
+  })
+
+  it('a failure that ends after its entry failed leaves the entry as it is', async () => {
+    await sharedSpace()
+    await newFile(SPACE, null)
+    api.holdUploads = true
+    void engine.push()
+    await until(() => api.heldUploads === 1)
+
+    const [held] = await db.outbox.toArray()
+    await db.outbox.update(held?.seq as number, { status: 'failed', last_error: 'BN_ACCESS_LOST' })
+    // The Storage policy refuses it now, as it would after the access was removed.
+    failing('uploadObject', forbiddenError)
+    api.releaseUploads()
+    await until(async () => engine.state.get().transfer === null)
+    await flush()
+
+    const [entry] = await db.outbox.toArray()
+    expect(entry).toMatchObject({ status: 'failed', last_error: 'BN_ACCESS_LOST' })
+    expect(entry?.uploaded ?? false).toBe(false)
+    expect(notices.filter((n) => n.kind === 'failed')).toEqual([])
   })
 })

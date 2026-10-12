@@ -572,7 +572,17 @@ export class SyncEngine {
   }
 
   private async markFailed(entry: OutboxEntry, error: string): Promise<void> {
-    await this.deps.db.outbox.update(entry.seq as number, { status: 'failed', last_error: error })
+    const { db } = this.deps
+    const seq = entry.seq as number
+    // An entry that already failed keeps its first error: one kept with BN_ACCESS_LOST while its
+    // request was out must stay recognisable to "Renunță".
+    const marked = await db.transaction('rw', db.outbox, async () => {
+      const current = await db.outbox.get(seq)
+      if (!current || current.status === 'failed') return false
+      await db.outbox.update(seq, { status: 'failed', last_error: error })
+      return true
+    })
+    if (!marked) return
     this.deps.onNotice?.({
       kind: 'failed',
       table: entry.table,
@@ -811,7 +821,7 @@ export class SyncEngine {
   private async removeSpaceLocally(spaceId: string, notify: boolean): Promise<void> {
     const { db } = this.deps
     const space = await db.spaces.get(spaceId)
-    await db.transaction(
+    const kept = await db.transaction(
       'rw',
       [db.spaces, db.folders, db.notes, db.files, db.members, db.spaceAccess, db.outbox, db.blobs],
       async () => {
@@ -848,8 +858,12 @@ export class SyncEngine {
         for (const entry of kept) {
           await db.outbox.update(entry.seq as number, { status: 'failed', last_error: ACCESS_LOST })
         }
+        return kept
       },
     )
+    // A file of that space still on the transfer lane stops. Cancelled only now, with the entry
+    // already failed, so the lane leaves it as it is (docs/PLAN.md §4.6d).
+    for (const entry of kept) if (entry.op === 'upload') this.transfers.cancel(entry.row_id)
     if (notify && space) this.deps.onNotice?.({ kind: 'access_lost', name: space.name })
   }
 }
