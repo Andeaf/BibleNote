@@ -23,7 +23,7 @@ export const ro = {
   },
   config: {
     missingTitle: 'Aplicația nu e configurată.',
-    missingHint: 'Lipsesc variabilele de mediu pentru Supabase. Vezi docs/SETUP.md.',
+    missingHint: 'Lipsesc variabilele de mediu pentru Supabase. Vezi README.md.',
   },
   nav: {
     main: 'Navigare principală',

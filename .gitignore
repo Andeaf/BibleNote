@@ -6,10 +6,27 @@ dev-dist
 coverage
 *.tsbuildinfo
 
-# Secrets: every .env file except the example
+# Secrets and local configuration: every .env file except the example
 .env*
 !.env.example
 *.local
+
+# Keys, certificates and signing material
+*.pem
+*.key
+*.p12
+*.p8
+*.pfx
+*.jks
+*.keystore
+*.mobileprovision
+*.crt
+*.cer
+
+# Internal documents: only README.md and SECURITY.md are published
+*.md
+!README.md
+!SECURITY.md
 
 # Logs
 logs
@@ -19,8 +36,16 @@ npm-debug.log*
 # Tooling
 .vercel
 supabase/.temp
+supabase/.branches
 .vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
 Thumbs.db
+
+# AI assistants
+.claude/
+.cursor/
+.codex/
+.gemini/
+.aider*

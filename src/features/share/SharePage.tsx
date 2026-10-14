@@ -24,7 +24,7 @@ interface ShareData {
 type LinkAction = { kind: 'off' | 'regenerate'; link: ShareLinkRow }
 
 /**
- * "Partajare" for the owner of a main folder (docs/PLAN.md §5.7): the reading and the editing
+ * "Partajare" for the owner of a main folder: the reading and the editing
  * link (copy, send, on/off, a new link), and the people with access, who can be removed.
  * Online only: links are not synced and every action is checked by the server.
  */

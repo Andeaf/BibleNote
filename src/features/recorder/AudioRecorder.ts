@@ -77,7 +77,7 @@ const isQuotaError = (error: unknown) =>
   error instanceof Error && /quota/i.test(`${error.name} ${error.message}`)
 
 /**
- * MediaRecorder around IndexedDB (docs/PLAN.md §5.6): a chunk every 5 s goes straight into
+ * MediaRecorder around IndexedDB: a chunk every 5 s goes straight into
  * Dexie, pause/resume, Screen Wake Lock, and a split into a new part at 45 MB without a gap
  * (the next part starts before the old one stops). Stopping turns the recording into files in
  * the upload queue; anything left after a crash is offered again at the next start.

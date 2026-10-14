@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { toApiError } from './supabaseApi'
 
 /**
- * Sharing (docs/PLAN.md §5.7): online-only actions, never queued. Entering through a link, and
+ * Sharing: online-only actions, never queued. Entering through a link, and
  * for the owner of a space its two links and the people with access. Share links are not
  * synced: only the owner can read them (RLS), and they matter only with a connection.
  */

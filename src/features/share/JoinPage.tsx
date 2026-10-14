@@ -27,7 +27,7 @@ function joinError(error: unknown): string {
 }
 
 /**
- * `/s/<token>` (docs/PLAN.md §5.7). Signed in (an account, or a guest who already gave a name):
+ * `/s/<token>`. Signed in (an account, or a guest who already gave a name):
  * enters at once. Otherwise asks for a name first, then signs in as a guest (Supabase anonymous
  * sign-in, used only here) and enters. The name stays on this device. The link is replaced by
  * the folder's address, so the token does not remain in the history.

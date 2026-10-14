@@ -1,7 +1,7 @@
 import type { Json } from '@/lib/database.types'
 
 /**
- * Tiptap JSON of a note → Markdown, for the ZIP export (docs/PLAN.md §5.10). Only the nodes the
+ * Tiptap JSON of a note → Markdown, for the ZIP export. Only the nodes the
  * editor has: headings, paragraphs, bold, italic, underline (<u>), highlight (<mark>), links,
  * bullet / numbered / check lists, quotes, hard breaks. Unknown nodes keep their text.
  */

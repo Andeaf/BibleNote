@@ -32,7 +32,7 @@ interface ActiveTransfer {
 }
 
 /**
- * The file transfers of `upload` entries (docs/PLAN.md §4.6d), on their own lane so a big or
+ * The file transfers of `upload` entries, on their own lane so a big or
  * failing upload never holds back the main queue. One transfer at a time, in seq order, once
  * the file's main folder exists on the server (the Storage policy needs it). The entry stays
  * `pending` in IndexedDB while it is transferred (never `inflight`), so recovering entries left

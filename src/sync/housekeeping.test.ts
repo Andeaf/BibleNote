@@ -12,7 +12,7 @@ import {
 import { FakeApi, networkError, type FakeCall } from './testing/fakeApi'
 
 /**
- * The owner's cleanup (docs/PLAN.md §5.8, rev. 15): the 30-day emptying and the orphan sweep can
+ * The owner's cleanup: the 30-day emptying and the orphan sweep can
  * delete for good, so they never act on a local copy that was not refreshed, never on objects a
  * row may still come for, and never on what the server does not consider expired.
  */

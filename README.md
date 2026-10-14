@@ -1,108 +1,276 @@
 # BibleNote
 
-Notițe pentru studiul Bibliei: foldere, notițe formatate, înregistrări audio, fișiere, etichete,
-referințe biblice (Cornilescu) și partajare prin link. Merge pe telefon și pe calculator, se
-instalează ca aplicație (PWA), funcționează fără internet și se sincronizează între dispozitive.
+[![CI](https://github.com/Andeaf/BibleNote/actions/workflows/ci.yml/badge.svg)](https://github.com/Andeaf/BibleNote/actions/workflows/ci.yml)
+![License: source-available](https://img.shields.io/badge/license-source--available-lightgrey)
 
-Adresa: https://biblenote-app.vercel.app
+An offline-first Bible study notebook, installable as a PWA on phones and desktops, that syncs
+between devices, records audio, stores files and shares folders by link. Built for one owner and a
+handful of guests, on free tiers only, with **no server code of its own**: a React app talks to
+IndexedDB, and a separate sync engine talks to Supabase (Postgres with row-level security, Storage,
+Realtime, Auth).
 
-**Stare:** toate fazele planului sunt gata (0–6); urmează testarea cap-coadă pe dispozitive
-(lista din [docs/SETUP.md](docs/SETUP.md)). Planul e în [docs/PLAN.md](docs/PLAN.md), specificația
-în [docs/SPEC.md](docs/SPEC.md).
+The user interface is in Romanian; code, comments, tests and this document are in English.
 
-## Cum se folosește
+**Status:** feature-complete for the planned v1 scope and deployed. Field testing on phones (iOS and
+Android) is in progress before the app is handed over to its user, so a few behaviours listed under
+[In progress](#in-progress) are still being verified on real devices.
 
-- **Intrarea**: cu Google sau cu email și parolă (conturile de rezervă le creează David). Doar
-  emailurile din lista `allowed_emails` pot crea foldere; oricine primește un link intră ca invitat,
-  fără cont, doar cu un nume.
-- **Instalare**: pe Android și pe calculator, Setări → „Instalează aplicația”. Pe iPhone, în Safari:
-  Distribuie → „Adaugă pe ecranul principal” (pașii sunt și în aplicație). Pe iPhone e important:
-  instalată, aplicația își păstrează datele; în Safari simplu, telefonul le poate șterge.
-- **Foldere**: folderele principale au culoare și emoji și sunt cele care se partajează; în ele,
-  subfoldere pe oricâte niveluri. Mutare cu drag & drop pe calculator și cu „Mută în…” pe telefon.
-- **Notițe**: se salvează singure. Titluri, îngroșat, cursiv, subliniat, evidențiere în 4 culori,
-  liste, liste de verificare, citat, link. Etichetele se scriu sub titlu. Căutarea (jos, „Căutare”)
-  găsește în titluri, text, etichete și nume de fișiere, cu sau fără diacritice.
-- **Referințe biblice**: „Ioan 3:16”, „1 Cor 13:4-7”, „Rom 8:28,31”, „Ioan 3,16”, „Psalmul 23”
-  devin linkuri discrete; un clic arată textul și „Inserează în notiță”. Butonul cu cartea din
-  bara notiței caută o referință („ioan 3 16”) și o inserează. Biblia merge și fără internet.
-- **Fișiere și înregistrări**: „+” → încarcă (poze, PDF, documente, audio) sau înregistrează.
-  Pozele se micșorează singure; un fișier poate avea cel mult 50 MB; înregistrările lungi se
-  împart singure în părți. Ce se încarcă fără internet pleacă singur când revine conexiunea.
-- **Partajare**: în meniul folderului principal, „Partajare”: un link de citire și unul de editare,
-  care se pot opri sau înlocui, și lista persoanelor cu acces, din care poți scoate pe oricine.
-- **Coș de gunoi**: ce ștergi ajunge în coș și se poate restaura 30 de zile; apoi se șterge singur.
-  Doar proprietarul folderului principal șterge definitiv.
-- **Fără internet**: totul se poate citi și scrie; indicatorul de sus arată ce așteaptă să plece.
-  Dacă aceeași notiță a fost schimbată pe două dispozitive, nu se pierde nimic: a doua variantă
-  devine o notiță separată „(conflict – Nume, dată)”.
-- **Setări**: tema (luminoasă, întunecată, automată) și mărimea textului din notițe, la fel pe toate
-  dispozitivele; spațiul folosit; exportul; „Nesincronizate”, pentru ce n-a putut fi trimis.
-- **Printare**: în meniul unei notițe, „Printează / Salvează ca PDF”.
+Live: https://biblenote-app.vercel.app. Creating content needs an allow-listed account; anyone can
+enter a shared folder as a guest through a share link.
 
-## Copia de siguranță (backup)
+## Screenshots
 
-Planul gratuit Supabase nu oferă copii de siguranță descărcabile. Copia e **exportul**: Setări →
-„Exportă tot (ZIP)”, de pe calculator (Chrome sau Edge îl scriu direct pe disc). Arhiva are câte un
-folder pentru fiecare folder principal, notițele ca fișiere `.md` (Markdown, se deschid cu orice
-editor de text) și fișierele cu numele lor. Nu conține coșul, linkurile de partajare și setările.
-Pe telefon se pot exporta doar notițele; exportul complet poate avea sute de MB din cauza
-înregistrărilor. Recomandare: un export complet pe lună, păstrat pe calculator sau pe un stick.
+Taken on a demo account with sample content.
 
-## Costuri
+![A folder on desktop: the folder tree, tag filters, notes, an image, a PDF and a recording](.github/screenshots/desktop-folder.png)
 
-Zero, cât timp proiectul rămâne în limitele planurilor gratuite:
+![The note editor with Bible references shown as links and the popover for Romans 5:8](.github/screenshots/desktop-note.png)
 
-- **Supabase Free** (Frankfurt): baza de date, autentificarea, fișierele, sincronizarea.
-- **Vercel Hobby**: găzduirea aplicației, publicată automat din GitHub.
-- **GitHub**: codul (repo privat) și workflow-ul care ține proiectul Supabase treaz.
+<p>
+  <img src=".github/screenshots/phone-folders.png" width="32%" alt="Main folders on a phone" />
+  <img src=".github/screenshots/phone-note.png" width="32%" alt="A note on a phone with the bottom sheet for John 10:11" />
+  <img src=".github/screenshots/phone-dark.png" width="32%" alt="A folder on a phone in dark mode" />
+</p>
 
-Un domeniu propriu (în loc de `*.vercel.app`) e opțional și costă de obicei 10–15 € pe an.
+![Sharing a folder: read and edit links, people with access](.github/screenshots/desktop-share.png)
 
-## Limite
+## Features
 
-| Ce | Limita | Ce face aplicația |
-|---|---|---|
-| Fișiere | 1 GB în total, pe tot proiectul | Setări arată „spațiu folosit / 1 GB”; pozele se comprimă, sunetul e înregistrat la calitate de voce (~48 kbps, ~22 MB pe oră) |
-| Un fișier | 50 MB | refuzat înainte de încărcare, cu mesaj; înregistrările se împart la 45 MB |
-| Baza de date | 500 MB | notițele sunt text: sute de mii de notițe încap |
-| Trafic | 5 GB pe lună | fișierele deschise se păstrează pe dispozitiv (cache de 200 MB), ca să nu se descarce de fiecare dată |
-| Pauză | proiectul se oprește după 7 zile fără activitate | `.github/workflows/keepalive.yml` îl atinge la 3 zile |
-| Proiecte | 2 proiecte gratuite active pe cont | BibleNote folosește unul |
+- **Local-first notes**: a rich-text editor (Tiptap) with headings, lists, checklists, quotes,
+  links and highlights; autosave; tags with autocomplete; instant search with diacritics-insensitive
+  matching; pin, move, drag & drop on desktop.
+- **Sync between devices** through an outbox: edits made offline are queued and sent when the
+  connection returns; other devices receive changes within seconds over Realtime.
+- **Conflict handling without data loss**: notes carry a server-incremented version; a save against
+  a stale version becomes a separate "(conflict – name, date)" note instead of overwriting.
+- **Files**: upload photos, PDFs, documents and audio (50 MB limit, images compressed client-side),
+  with an image gallery, an audio player, an in-app PDF viewer and an LRU offline cache.
+- **Audio recorder** that never loses sound silently: chunks are written to IndexedDB every 5 s,
+  long recordings are split gap-free at 45 MB, and an interrupted recording is recovered on the
+  next start.
+- **Sharing by link**: per-folder read and edit links that can be disabled or regenerated, guests
+  without accounts, a list of people with access, and "X is editing" presence.
+- **Bible references**: "Ioan 3:16", "1 Cor 13:4-7", "Psalmul 23" and the usual Romanian forms are
+  detected while typing and shown as discreet links; a click shows the passage, which can be inserted
+  as a quote. The text (Cornilescu, public domain) is precached, so it works offline.
+- **Trash with safe cleanup**: soft delete everywhere, 30-day retention decided by the server, and an
+  orphan sweep that only runs after a successful pull and only on the owner's device.
+- **Offline session**: the app opens from the stored session even when the access token has expired
+  and there is no network; unsynced work survives a rejected refresh token.
+- **Appearance synced across devices**, ZIP export (streamed to disk on desktop), print stylesheet,
+  install prompts, a keep-alive job for the free Supabase tier.
 
-Alte limite de știut: nu există editare simultană în timp real (apare doar „X editează acum”); pe
-iPhone, Google în aplicația instalată poate cere din nou intrarea, iar emailul cu parolă merge
-mereu; coșul se golește doar când proprietarul deschide aplicația (până atunci nu se pierde nimic).
+### In progress
 
-## Dezvoltare locală (Windows, CMD)
+- Field tests on real phones: recording behaviour when the screen locks or a call comes in (iOS),
+  real audio bitrate on Safari, Google sign-in inside the installed iOS app.
+- The end-to-end acceptance checklist on Chrome Android, Safari iOS and desktop browsers.
 
-```cmd
-npm install
-npm run dev
+### Not planned for v1
+
+- Real-time collaborative editing of the same note (presence only).
+- A self-service password reset (accounts are created by the owner; Google sign-in is the primary
+  path).
+- Any paid infrastructure.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  UI[React UI<br/>reads and writes only Dexie] <-->|useLiveQuery| DB[(IndexedDB<br/>Dexie, one DB per user)]
+  DB <--> ENGINE[Sync engine<br/>outbox push, incremental pull]
+  ENGINE -->|RPC + REST, RLS| PG[(Postgres)]
+  ENGINE -->|upload lane| ST[(Storage bucket)]
+  ENGINE <-->|broadcast + presence| RT[Realtime]
+  AUTH[Supabase Auth<br/>Google, email, anonymous guests] --> ENGINE
 ```
 
-Aplicația pornește la http://localhost:5173. Alte comenzi: `npm run build`, `npm run lint`,
-`npm test`, `npm run test:rls` (testul de securitate, pe proiectul real), `npm run build:bible`
-(regenerează textul biblic din `data/`). Variabilele de mediu se pun în `.env.local`, după modelul
-din `.env.example`.
+1. The UI reads and writes **only IndexedDB** (Dexie, `useLiveQuery`). There is no other store and
+   no state-management library.
+2. Every data-layer write puts the row and an **outbox entry** in one transaction. The sync engine
+   (`src/sync/`) pushes the outbox and pulls incrementally; it is the only code that talks to
+   Supabase tables, it never imports browser APIs, and it is tested against a fake API with
+   `fake-indexeddb`.
+3. **No own server.** Sensitive operations are `security definer` Postgres functions; access
+   control is one SQL helper, `has_space_access(space_id, min_role)`, reused by the table policies,
+   the Storage policies and the Realtime channel policies. Column-level grants replace upserts.
+4. Notes use **compare-and-set** (`save_note` with a base version); everything else is
+   last-write-wins. Deletes are soft (`deleted_at`), and a hard delete only scrubs the row so that
+   it can still propagate.
+5. Files go through a **transfer lane** separate from the metadata queue: object first, then the
+   row; idempotent paths; retries at 1/5/15/60 min on a flaky connection; the local blob stays
+   until both stages are confirmed.
+6. The frontend ships only the project URL and the **publishable** key. The secret key exists only
+   locally, for the security test.
 
-## Tehnologii
+### Design decisions worth discussing
 
-React + TypeScript + Vite, Tailwind, React Router, `vite-plugin-pwa`, Tiptap, Dexie (IndexedDB),
-Supabase (Auth, Postgres + RLS, Storage, Realtime), Vercel.
+- **Why an outbox instead of a CRDT or a sync library**: the data is a tree of folders with
+  mostly single-writer notes; an ordered outbox with coalescing, dependency ordering (a note waits
+  for its folder's insert) and inflight recovery is simpler to reason about and to test than a
+  CRDT, and conflicts are rare enough that a visible conflict copy beats a silent merge.
+- **Why a pure sync engine**: `src/sync/engine.ts` has no browser imports; `runtime.ts` wires
+  timers, online and visibility events. The engine's invariants (ordering, retries, access loss,
+  conflict copies, upload lanes) are covered by tests against `FakeApi`, which enforces the same
+  server rules the ordering depends on.
+- **Why RLS and RPCs instead of an API server**: zero infrastructure to run, and the whole
+  authorisation surface is reviewable in SQL. The trade-off is that mistakes are subtle, so there
+  is a regression test that runs against a real project with five roles (owner, editor, viewer,
+  stranger, anonymous guest) and exercises every cell of the access matrix, Storage and Realtime.
+- **Deleting for good is the owner's job**: the 30-day purge and the orphan sweep compare with
+  the server's rows, run only after a successful pull, and never touch this device's unsent
+  uploads. Nothing is ever removed on the strength of a stale local copy.
+- **Recording on phones**: MediaRecorder output is persisted in 5-second chunks, parts are split
+  before the previous one stops (no gap), a wake lock and a `beforeunload` guard are held, and
+  `mute` plus a watchdog report interruptions instead of producing a silent file.
+- **Service worker with `registerType: 'prompt'`**: the app never reloads itself; an update is
+  offered, and never while a recording is active.
 
-## Documentație
+## Tech stack
 
-- [docs/SETUP.md](docs/SETUP.md): pașii manuali (Vercel, Supabase, Google OAuth) și ce se testează
-  după fiecare fază.
-- [docs/PLAN.md](docs/PLAN.md): arhitectura, schema, sincronizarea, fazele.
-- [CLAUDE.md](CLAUDE.md): convențiile de cod.
+| Area | Choice |
+| --- | --- |
+| UI | React 19, TypeScript 6, Vite 8, Tailwind CSS 4, React Router 8, Radix UI primitives, dnd-kit, lucide-react |
+| Editor | Tiptap 3 (MIT extensions only) with custom decorations for Bible references |
+| Local data | Dexie 4 (IndexedDB), `dexie-react-hooks` |
+| Backend | Supabase: Auth, Postgres 17 with RLS, Storage, Realtime; `@supabase/supabase-js` 2 |
+| PWA | `vite-plugin-pwa` 2 with Workbox 7, self-hosted fonts, precached Bible text |
+| Files | `react-pdf` 11 (pdf.js worker precached), `client-zip` for streamed exports |
+| Tooling | Vitest 5, `fake-indexeddb`, ESLint 10, Prettier 3, GitHub Actions, Vercel |
+| Runtime | Node ≥ 22.12 for the toolchain; scripts run as TypeScript with Node's type stripping |
 
-## Atribuiri
+## Project structure
 
-- Textul biblic: _Romanian Corrected Cornilescu Version_ (Biblia Cornilescu, ediția corectată),
-  domeniu public, din [open-bibles](https://github.com/seven1m/open-bibles)
-  (`ron-rccv.usfx.xml`, copiat în `data/`). Diacriticele ş/ţ cu sedilă sunt înlocuite cu ș/ț.
-- Fonturi: [Inter](https://rsms.me/inter/) și
-  [Source Serif 4](https://github.com/adobe-fonts/source-serif), ambele sub SIL Open Font License,
-  găzduite local.
+```
+.github/workflows/   ci.yml (typecheck, lint, test, build) · keepalive.yml (pings Supabase every 3 days)
+data/                Bible source (USFX XML)
+public/              icons, fonts, generated Bible JSON (precached)
+scripts/             build-bible.ts · build-fonts.ts · build-icons.ts
+supabase/migrations/ schema, RLS, RPCs, Storage and Realtime policies
+supabase/tests/      rls.test.ts, the security regression test (runs on demand)
+src/
+  auth/              AuthProvider, guards, offline session logic
+  components/        shared UI (AppShell, PageHeader, NoticeStack, dialogs, menus)
+  data/              Dexie + outbox writes per area (spaces, folders, notes, files, …)
+  features/          folders, notes (editor), files, recorder, share, bible, search, tags, trash,
+                     settings, export, install
+  i18n/ro.ts         every UI string
+  lib/               Supabase client, Dexie schema, storage provider, blob cache, helpers
+  sync/              engine, outbox, transfers, realtime hub, runtime, housekeeping, fake API
+```
+
+## Running locally
+
+Prerequisites: Node 22.12 or newer, npm, a free Supabase project. A Google Cloud OAuth client is
+optional (email + password sign-in works without it).
+
+```bash
+git clone https://github.com/Andeaf/BibleNote.git
+cd BibleNote
+npm install
+```
+
+### 1. Supabase project
+
+1. Create a project (any region). From **Project Settings → General** note the project reference
+   (`<ref>`); from **Project Settings → API Keys / Data API** note the URL `https://<ref>.supabase.co`
+   and the **publishable** key. The secret key is only ever used locally for the security test.
+2. Apply the migrations:
+
+   ```bash
+   npx supabase login
+   npx supabase link --project-ref <ref>
+   npx supabase db push
+   ```
+
+3. **Authentication → URL Configuration**: add `http://localhost:5173/**` (and your production URL)
+   to the redirect URLs.
+4. **Authentication → Sign In / Providers**: keep Email enabled, enable **Anonymous sign-ins**
+   (guests through share links), and optionally Google. For Google, the OAuth client needs the
+   JavaScript origin `https://<ref>.supabase.co` and the redirect URI
+   `https://<ref>.supabase.co/auth/v1/callback`.
+5. Allow-list the accounts that may create folders (**SQL Editor**):
+
+   ```sql
+   insert into public.allowed_emails (email) values ('you@example.com');
+   ```
+
+   Any other signed-in account sees "no access yet"; guests join through share links. Email +
+   password accounts are created from **Authentication → Users** (there is no sign-up form).
+6. **Project Settings → Realtime**: disable public access. The app only uses private channels,
+   authorised in Postgres.
+
+### 2. Environment and run
+
+```bash
+cp .env.example .env.local   # then fill in VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY
+npm run dev                  # http://localhost:5173
+```
+
+To try the service worker and the install flow, use the production build:
+
+```bash
+npm run build
+npm run preview
+```
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | dev server |
+| `npm run build` | typecheck + production build to `dist/` |
+| `npm run preview` | serve `dist/` (service worker works here) |
+| `npm run typecheck` / `npm run lint` / `npm run format` | `tsc -b`, ESLint + Prettier check, Prettier write |
+| `npm test` | Vitest, single run |
+| `npm run test:rls` | security regression test against a real project (see below) |
+| `npm run build:bible` / `build:fonts` / `build:icons` | regenerate the Bible JSON, the font subsets, the PWA icons |
+
+## Testing
+
+- `npm test` runs the unit tests and the sync engine tests (293 tests in 27 files): ordering,
+  retries, conflicts, uploads, access loss, housekeeping, the recorder with an injectable clock,
+  the reference parser, export, search, i18n (every string must use comma-below diacritics).
+- `npm run test:rls` runs `supabase/tests/rls.test.ts` against a real project. It needs
+  `.env.test.local` (ignored by git) with `SUPABASE_URL`, `SUPABASE_ANON_KEY` and
+  `SUPABASE_SERVICE_ROLE_KEY`, creates throwaway users (`rls-*@biblenote.test`), checks the whole
+  access matrix, Storage and Realtime (35 tests), then deletes everything it created. It is never
+  run in CI.
+- CI (`.github/workflows/ci.yml`) runs typecheck, lint, tests and the build on every push.
+
+## Deployment
+
+- **Vercel** (Hobby): framework Vite, build `npm run build`, output `dist/`; `vercel.json` has the
+  SPA rewrite and `no-cache` headers for the service worker and the manifest. Environment
+  variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`.
+- **Keep-alive**: free Supabase projects pause after a week without activity, so
+  `keepalive.yml` calls a public `ping()` RPC every three days. It needs the repository secrets
+  `SUPABASE_URL` and `SUPABASE_ANON_KEY` (the publishable key, sent only in the `apikey` header).
+
+## Known limitations
+
+- Designed for one owner and a few guests, not for many concurrent editors; there is no
+  collaborative editing of a single note.
+- Free-tier budgets: 1 GB of files, 500 MB of database, 5 GB of egress per month; the app shows
+  the storage used and compresses images, and recordings use a voice bitrate (~22 MB per hour).
+- Phones export only the notes (a full export with recordings can be hundreds of MB and is done
+  from a desktop browser, streamed to disk in Chrome and Edge).
+- On iOS, Google sign-in inside the installed app may bounce back to Safari; email + password is
+  the fallback. Safari may ignore the requested audio bitrate.
+- The trash is emptied only when the owner opens the app; nothing is lost in the meantime.
+- Romanian UI only; the Bible text is a single translation.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for the reporting process and a summary of the security model.
+
+## Attributions
+
+- Bible text: _Romanian Corrected Cornilescu Version_, public domain, from
+  [open-bibles](https://github.com/seven1m/open-bibles) (`ron-rccv.usfx.xml`), with cedilla
+  diacritics normalised to comma-below.
+- Fonts: [Inter](https://rsms.me/inter/) and
+  [Source Serif 4](https://github.com/adobe-fonts/source-serif), SIL Open Font License, self-hosted.
+
+## License
+
+Source-available. The code is published for reference and portfolio purposes; see
+[LICENSE](LICENSE).

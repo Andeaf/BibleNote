@@ -32,7 +32,7 @@ interface ReferencePreviewProps {
 
 /**
  * The text of a reference tapped in a note: a popover next to it on desktop, a bottom sheet on
- * phones (docs/PLAN.md §5.9). A whole chapter shows all of it. On desktop the editor keeps the
+ * phones. A whole chapter shows all of it. On desktop the editor keeps the
  * caret: typing goes on, and the popover closes with the next change, a click elsewhere or
  * Escape.
  */

@@ -11,7 +11,7 @@ import { ExportFileError, canStreamToDisk, pickZipTarget, writeZip } from './wri
 const zipName = () => `BibleNote-${new Date().toISOString().slice(0, 10)}.zip`
 
 /**
- * "Export" in Settings (docs/PLAN.md §5.10, rev. 15): the backup as a ZIP. The sizes are shown
+ * "Export" in Settings: the backup as a ZIP. The sizes are shown
  * before anything starts. Recordings can make the full export hundreds of MB, so a phone never
  * builds it: phones export the notes only and are told to make the full export on a computer.
  * Computers stream it to disk where the browser can (Chrome, Edge), else build it in memory.

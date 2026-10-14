@@ -44,7 +44,7 @@ const canRestore = (item: TrashItem) =>
   item.kind === 'space' ? item.role === 'owner' : item.role === 'owner' || item.role === 'editor'
 
 /**
- * "Coș de gunoi" (docs/PLAN.md §5.8): what is in the trash in the spaces this user can see, with
+ * "Coș de gunoi": what is in the trash in the spaces this user can see, with
  * "Restaurează" (works offline, through the outbox) and, for the owner, "Șterge definitiv" and
  * "Golește coșul" (online only: the server purges, then the files' objects are removed). The
  * automatic 30-day emptying is not done here: the server chooses it (sync/housekeeping.ts).

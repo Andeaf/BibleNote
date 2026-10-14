@@ -1,7 +1,7 @@
 import type { Json } from './database.types'
 
 /**
- * Theme and note text size (docs/PLAN.md §5.10): saved on the device at once (localStorage, read
+ * Theme and note text size: saved on the device at once (localStorage, read
  * by index.html before the first paint) and in the account (profiles.settings, last write wins),
  * so every device follows the last choice.
  */

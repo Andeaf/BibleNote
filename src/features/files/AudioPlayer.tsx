@@ -13,7 +13,7 @@ interface AudioPlayerProps {
   knownDuration: number | null
 }
 
-/** Play/pause, a seek bar, ±15 s and speeds 1× / 1,25× / 1,5× / 2× (docs/PLAN.md §5.5). */
+/** Play/pause, a seek bar, ±15 s and speeds 1× / 1,25× / 1,5× / 2×. */
 export function AudioPlayer({ src, knownDuration }: AudioPlayerProps) {
   const audio = useRef<HTMLAudioElement>(null)
   const [playing, setPlaying] = useState(false)

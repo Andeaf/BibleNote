@@ -2,7 +2,7 @@ import { BOOKS, referenceName, type BookInfo } from './books'
 import counts from './verseCounts.json'
 
 /**
- * Bible references in free text (docs/PLAN.md §5.9). Pure, no dependencies besides the book
+ * Bible references in free text. Pure, no dependencies besides the book
  * table and the verse counts.
  *
  * Recognised in notes (`findReferences`):

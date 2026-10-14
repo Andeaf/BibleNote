@@ -42,8 +42,7 @@ export interface OutboxEntry {
   /**
    * upload only: the Storage object is confirmed. Until then the file is transferred by the
    * separate transfer lane and the main queue skips the entry (it still counts as an unsent
-   * create); afterwards the main queue inserts the row. The object always exists before the row
-   * (docs/PLAN.md §4.6d).
+   * create); afterwards the main queue inserts the row. The object always exists before the row.
    */
   uploaded?: boolean
   /** upload only: network failures of the transfer in a row while online (the pause ladder). */
@@ -63,7 +62,7 @@ export interface StoredObject {
   createdAt: string
 }
 
-/** What purge_items and purge_expired answer (docs/PLAN.md §5.8). */
+/** What purge_items and purge_expired answer. */
 export interface PurgeResult {
   purged: number
   skipped: string[]
@@ -110,7 +109,7 @@ export class ApiError extends Error {
   }
 }
 
-/** What save_note answers (docs/PLAN.md §3.3). */
+/** What save_note answers. */
 export interface SaveNoteResponse {
   status: 'ok' | 'conflict' | 'gone'
   note: AnyRow

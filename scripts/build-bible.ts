@@ -1,5 +1,5 @@
 /**
- * Builds the Bible text from the USFX source (docs/PLAN.md §5.9):
+ * Builds the Bible text from the USFX source:
  *   data/ron-rccv.usfx.xml
  *   → public/bible/rccv/<ID>.json        { id, name, chapters: [[verse 1, verse 2, …], …] }
  *   → public/bible/rccv/index.json       books in order, names, abbreviations, verse counts

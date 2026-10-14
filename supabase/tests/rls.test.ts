@@ -1,6 +1,6 @@
 /**
- * Security test against a real Supabase project: RLS, RPCs, Storage and Realtime policies
- * (docs/PLAN.md §3). Run with `npm run test:rls`; needs .env.test.local (docs/SETUP.md).
+ * Security test against a real Supabase project: RLS, RPCs, Storage and Realtime policies.
+ * Run with `npm run test:rls`; needs .env.test.local (see README.md).
  *
  * It creates throwaway users (owner, editor, viewer, stranger, anonymous guest), two spaces,
  * exercises every cell of the access matrix and deletes everything it created.
@@ -120,7 +120,7 @@ beforeAll(async () => {
   if (guestError || !guestData.user) {
     throw new Error(
       `Anonymous sign-in failed (${guestError?.message ?? 'no user'}). ` +
-        'Enable "Allow anonymous sign-ins" in Supabase > Authentication (docs/SETUP.md).',
+        'Enable "Allow anonymous sign-ins" in Supabase > Authentication (see README.md).',
     )
   }
   guest = { id: guestData.user.id, client: guestClient }

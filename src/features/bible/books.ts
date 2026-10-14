@@ -1,6 +1,6 @@
 /**
  * The 66 books of the Romanian Corrected Cornilescu Version, in order, with the names and
- * abbreviations the reference parser recognises (docs/PLAN.md §5.9). No imports: the build
+ * abbreviations the reference parser recognises. No imports: the build
  * script (`scripts/build-bible.ts`) reads this file too and checks every name against the
  * source.
  *

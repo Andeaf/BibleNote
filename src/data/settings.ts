@@ -7,7 +7,7 @@ import { enqueue } from '@/sync/outbox'
 /**
  * Saves part of the account's settings (theme, text size): the own profile row and one outbox
  * entry with the whole settings object (unknown keys kept), so the last change wins on the
- * server as on every device (docs/PLAN.md §5.10). Works offline.
+ * server as on every device. Works offline.
  */
 export async function saveSettings(
   db: BibleNoteDb,

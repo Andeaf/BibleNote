@@ -36,7 +36,7 @@ export interface TrashSource {
 }
 
 /**
- * What the trash screen lists (docs/PLAN.md §2): the items whose parent is not in the trash too,
+ * What the trash screen lists: the items whose parent is not in the trash too,
  * newest first. A folder stands for everything trashed with it, a main folder for its contents.
  */
 export function collectTrash({ spaces, folders, notes, files, roles }: TrashSource): TrashItem[] {

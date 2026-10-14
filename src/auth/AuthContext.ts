@@ -17,8 +17,8 @@ export interface AuthContextValue {
   /** Resolves with a Romanian error message, or null on success. */
   signInWithPassword: (email: string, password: string) => Promise<string | null>
   /**
-   * A guest without an account (Supabase anonymous sign-in), used only on a share link
-   * (docs/PLAN.md §5.7). Resolves with a Romanian error message, or null on success.
+   * A guest without an account (Supabase anonymous sign-in), used only on a share link.
+   * Resolves with a Romanian error message, or null on success.
    */
   signInAsGuest: () => Promise<string | null>
   /** Ends the session on this device only. Resolves false when it needs the network. */

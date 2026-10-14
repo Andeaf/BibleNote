@@ -18,7 +18,7 @@ import { STALL_MS, TRANSFER_PAUSES_MS } from './transfers'
 import type { ApiError, SyncNotice } from './types'
 
 /**
- * Files through the sync engine (docs/PLAN.md §4.6d):
+ * Files through the sync engine:
  * 1. the Storage object first, then the row: no device sees a row before its file exists;
  * 2. idempotent: a taken path counts as uploaded, a 23505 on the row continues as an update;
  * 3. the row follows every insert rule; the blob stays until both stages are confirmed;

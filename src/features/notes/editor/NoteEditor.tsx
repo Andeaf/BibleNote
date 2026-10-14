@@ -40,7 +40,7 @@ const OWN_VERSIONS = 5
  * Title, tags and the Tiptap editor of one note, with autosave (1 s after the last change, and
  * when leaving). Each save says which content it was based on; the data layer writes it only
  * if the note still holds that content, otherwise the text goes to a conflict copy and the
- * editor follows it (docs/PLAN.md §4.5). A change from elsewhere while nothing is being typed
+ * editor follows it. A change from elsewhere while nothing is being typed
  * is loaded into the editor.
  */
 export function NoteEditor({

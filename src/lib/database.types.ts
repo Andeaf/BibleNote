@@ -110,7 +110,7 @@ export type SpaceMemberRow = {
 
 /**
  * Insert/Update types mirror the column grants in supabase/migrations/..._rls.sql
- * (docs/PLAN.md §3.2): the client can only send these columns. Everything else is set by
+ *: the client can only send these columns. Everything else is set by
  * triggers or by security definer RPCs. `never` = not allowed from the client at all.
  */
 type Insertable<Row, Required extends keyof Row, Optional extends keyof Row> = Pick<Row, Required> &

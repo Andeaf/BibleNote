@@ -93,7 +93,7 @@ const localTableOf = (table: ServerTable) => (table === 'space_members' ? 'membe
 /**
  * Local-first sync: the outbox is pushed in order, the server is pulled incrementally.
  * Pure of browser APIs (timers, events, realtime live in runtime.ts) so it can be tested with a
- * fake API and fake-indexeddb. See docs/PLAN.md §4.
+ * fake API and fake-indexeddb.
  */
 export class SyncEngine {
   readonly state: Store<SyncState> = createStore<SyncState>({
@@ -104,7 +104,7 @@ export class SyncEngine {
     lastError: null,
     transfer: null,
   })
-  /** File transfers of `upload` entries, on their own lane (docs/PLAN.md §4.6d). */
+  /** File transfers of `upload` entries, on their own lane. */
   readonly transfers: TransferLane
   private pushPromise: Promise<void> | null = null
   private pushAgain = false
@@ -465,7 +465,7 @@ export class SyncEngine {
   }
 
   /**
-   * The second stage of a new file (docs/PLAN.md §4.6d): its row, inserted only after the
+   * The second stage of a new file: its row, inserted only after the
    * transfer lane confirmed the Storage object (`uploaded`; until then the entry is skipped),
    * so no device ever sees a row whose file does not exist yet. A 23505 continues as an update.
    */
@@ -542,7 +542,7 @@ export class SyncEngine {
   }
 
   /**
-   * The note changed on the server since this device's base version (docs/PLAN.md §4.5).
+   * The note changed on the server since this device's base version.
    * Nothing is overwritten: the original takes the server version (with metadata changes still
    * queued on top), and the local variant, including edits queued behind this entry, becomes a
    * new note "Titlu (conflict – Nume, dată)" in the same folder. The copy is a create like any
@@ -625,7 +625,7 @@ export class SyncEngine {
   /**
    * The parent folder was deleted on another device while this item was created offline.
    * The item is kept and moved to the root of its space instead of being marked failed,
-   * because "discard" would lose something new (docs/PLAN.md §4.2, rev. 4).
+   * because "discard" would lose something new.
    */
   private async moveToRoot(entry: OutboxEntry): Promise<void> {
     const { db } = this.deps
@@ -693,7 +693,7 @@ export class SyncEngine {
         await table.delete(entry.row_id)
         if (entry.table === 'spaces') await db.spaceAccess.delete(entry.row_id)
         // A file the server never got: its content goes with it. An object uploaded without
-        // its row is removed by the owner's orphan sweep (docs/PLAN.md §5.8).
+        // its row is removed by the owner's orphan sweep.
         if (entry.table === 'files') await db.blobs.delete(entry.row_id)
       }
     })
@@ -701,7 +701,7 @@ export class SyncEngine {
   }
 
   // ---------------------------------------------------------------------------------------------
-  // Trash: permanent deletion and the owner's cleanup (docs/PLAN.md §5.8)
+  // Trash: permanent deletion and the owner's cleanup
   // ---------------------------------------------------------------------------------------------
 
   /**
@@ -772,7 +772,7 @@ export class SyncEngine {
         await this.pullOnce()
       } while (this.pullAgain)
       this.state.update({ online: true, lastPullAt: this.now(), lastError: null })
-      // Only after a pull that succeeded in this session (docs/PLAN.md §5.8, rev. 15).
+      // Only after a pull that succeeded in this session.
       void this.housekeep()
     } catch (error) {
       if (error instanceof ApiError && error.kind === 'network') {
@@ -897,7 +897,7 @@ export class SyncEngine {
    * except what never reached the server and carries content: note text (save_note entries) and
    * files not inserted yet (upload entries, with their blobs). Those stay, with their rows, as
    * failed entries (`BN_ACCESS_LOST`) in "Nesincronizate", where they can be downloaded or
-   * copied before "Renunță" (docs/PLAN.md §4.6d). Nothing unsent disappears silently.
+   * copied before "Renunță". Nothing unsent disappears silently.
    */
   private async removeSpaceLocally(spaceId: string, notify: boolean): Promise<void> {
     const { db } = this.deps
@@ -943,7 +943,7 @@ export class SyncEngine {
       },
     )
     // A file of that space still on the transfer lane stops. Cancelled only now, with the entry
-    // already failed, so the lane leaves it as it is (docs/PLAN.md §4.6d).
+    // already failed, so the lane leaves it as it is.
     for (const entry of kept) if (entry.op === 'upload') this.transfers.cancel(entry.row_id)
     if (notify && space) this.deps.onNotice?.({ kind: 'access_lost', name: space.name })
   }

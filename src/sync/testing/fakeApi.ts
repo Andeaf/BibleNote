@@ -175,7 +175,7 @@ export class FakeApi implements SyncApi {
     // No INSERT grant on notes: they are created through save_note only.
     if (table === 'notes') throw forbiddenError()
     this.validate(table, payload)
-    // docs/PLAN.md §4.6d: a file row never exists on the server before its object. Not a server
+    // A file row never exists on the server before its object. Not a server
     // rule (nothing enforces it there), so breaking it fails the test outright.
     if (table === 'files' && !this.objects.has(String(payload.storage_path))) {
       throw new Error('TEST INVARIANT: file row inserted before its Storage object')

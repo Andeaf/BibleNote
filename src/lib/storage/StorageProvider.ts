@@ -2,7 +2,7 @@ import type { StoredObject, TransferOptions } from '@/sync/types'
 
 /**
  * Where file contents live. Only src/lib/storage/ talks to Supabase Storage; everything else
- * goes through this interface, so files can move to another provider later (docs/PLAN.md §3.4).
+ * goes through this interface, so files can move to another provider later.
  * Errors are ApiError (src/sync/types.ts), classified like every other request.
  */
 export interface StorageProvider {

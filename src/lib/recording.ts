@@ -1,6 +1,6 @@
 import { t } from '@/i18n/ro'
 
-/** A part is closed as its own file at 45 MB, safely under the 50 MB limit (docs/PLAN.md §5.6). */
+/** A part is closed as its own file at 45 MB, safely under the 50 MB limit. */
 export const SPLIT_BYTES = 45 * 1024 * 1024
 /** Each chunk reaches IndexedDB within 5 s, so an interruption loses at most that much. */
 export const CHUNK_MS = 5000

@@ -24,7 +24,7 @@ export interface MetaEntry {
 /**
  * A file's content on this device. `pending = 1`: waiting for upload, kept until the server has
  * confirmed both the object and the row, never evicted. `pending = 0`: offline cache of files
- * opened (or uploaded) recently, evicted least recently used first (docs/PLAN.md §4.6).
+ * opened (or uploaded) recently, evicted least recently used first.
  */
 export interface BlobEntry {
   file_id: string

@@ -17,7 +17,7 @@ export interface NewFile {
 /**
  * Writes a new file row, its content as a pending blob and one `upload` outbox entry. Call
  * inside a transaction on files + blobs + outbox. The engine uploads the object first and
- * inserts the row after it (docs/PLAN.md §4.6d).
+ * inserts the row after it.
  */
 export async function writeNewFile(
   db: BibleNoteDb,

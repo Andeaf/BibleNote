@@ -56,7 +56,7 @@ function uniqueIn(taken: Set<string>, name: string): string {
 }
 
 /**
- * What "Exportă tot" (or only the notes) puts in the ZIP (docs/PLAN.md §5.10): every main folder
+ * What "Exportă tot" (or only the notes) puts in the ZIP: every main folder
  * as a top folder, its subfolders inside, notes as Markdown and files with their names. Nothing
  * from the trash. Folder names come first in each folder, so a note never takes a folder's name.
  */

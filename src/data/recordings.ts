@@ -15,7 +15,7 @@ export interface RecordingStart {
 /**
  * A recording lives in IndexedDB from its first seconds: the row in `recordings`, every chunk
  * in `recordingChunks` as it arrives. Nothing is lost when the app is closed or the phone dies;
- * on the next start the app offers to save what was recorded (docs/PLAN.md §5.6).
+ * on the next start the app offers to save what was recorded.
  */
 export async function startRecording(db: BibleNoteDb, input: RecordingStart): Promise<void> {
   await db.recordings.put({

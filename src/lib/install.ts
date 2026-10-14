@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 
 /**
- * Installing the app (docs/PLAN.md §5.10): Chrome and Edge (Android, computers) offer
+ * Installing the app: Chrome and Edge (Android, computers) offer
  * `beforeinstallprompt`, kept here for the "Instalează aplicația" button; Safari on iPhone has
  * no such event, so the app shows the steps (Distribuie → Adaugă pe ecranul principal).
  */

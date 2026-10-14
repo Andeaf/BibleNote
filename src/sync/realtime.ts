@@ -2,7 +2,7 @@ import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/database.types'
 import { createStore, type Store } from './store'
 
-/** Someone with a note open (docs/PLAN.md §5.7, "X editează acum"). */
+/** Someone with a note open ("X editează acum"). */
 export interface PresenceEntry {
   user_id: string
   name: string

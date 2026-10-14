@@ -15,9 +15,9 @@ export const outboxKey = (table: string, rowId: string): string => `${table}:${r
 
 /**
  * True when the entry creates its row on the server: an insert, a file upload, or a save_note for
- * a note the server does not have yet. Such an entry follows every insert rule (docs/PLAN.md
- * §4.2, §4.6b): rows pointing at it wait, it waits for its space and parent folder, it moves to
- * the root when the folder is gone, and a resend after a lost answer continues as an update.
+ * a note the server does not have yet. Such an entry follows every insert rule: rows pointing at
+ * it wait, it waits for its space and parent folder, it moves to the root when the folder is
+ * gone, and a resend after a lost answer continues as an update.
  */
 export const createsRow = (entry: Pick<OutboxEntry, 'op' | 'base_version'>): boolean =>
   entry.op === 'insert' ||
@@ -52,7 +52,7 @@ const canMerge = (entry: OutboxEntry, input: EnqueueInput): boolean =>
  *   version of the first edit;
  * - update after a not-yet-sent insert or upload: merged into it, the row reaches the server in
  *   its final state in one request. Note metadata never merges into a note create: update_note_meta
- *   is always a separate entry behind the save_note (docs/PLAN.md §4.2);
+ *   is always a separate entry behind the save_note;
  * - the search starts at the newest entry of the row and stops at one it cannot merge with that
  *   writes a column of this change: merging further back would let that later entry overwrite
  *   the newer value on the server. An entry in flight is never touched.

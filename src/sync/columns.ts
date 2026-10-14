@@ -49,7 +49,7 @@ export const UPDATE_COLUMNS: Record<WritableTable, readonly string[]> = {
 /**
  * save_note payloads (the RPC reads these keys from its jsonb argument). A new note sends the
  * whole row; an existing one only the content: save_note never touches folder_id, pinned or
- * deleted_at on update (docs/PLAN.md §4.5), those go through `update` entries.
+ * deleted_at on update, those go through `update` entries.
  */
 export const SAVE_NOTE_CREATE_COLUMNS = [
   'id',

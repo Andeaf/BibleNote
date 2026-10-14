@@ -37,7 +37,7 @@ function allDecorations(doc: PMNode): DecorationSet {
 }
 
 /**
- * Bible references in the note shown as discreet links (docs/PLAN.md §5.9). Decorations only:
+ * Bible references in the note shown as discreet links. Decorations only:
  * the saved document never changes, so opening a note is never an edit. After a change only the
  * touched textblocks are scanned again. A click on a reference calls `onOpen`; the caret is
  * placed as usual, so a reference can still be edited.

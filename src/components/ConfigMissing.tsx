@@ -1,6 +1,6 @@
 import { t } from '@/i18n/ro'
 
-/** Rendered instead of the app when the Supabase env vars are missing (see docs/SETUP.md). */
+/** Rendered instead of the app when the Supabase env vars are missing (see README.md). */
 export function ConfigMissing() {
   return (
     <main className="flex min-h-dvh items-center justify-center px-6 text-center">

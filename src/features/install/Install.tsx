@@ -86,7 +86,7 @@ const bannerDismissed = () => {
 }
 
 /**
- * Shown once on iPhone in Safari (docs/PLAN.md §4.6): Safari has no persistent storage and may
+ * Shown once on iPhone in Safari: Safari has no persistent storage and may
  * clear the data of a site that is not on the home screen. Closed for good with "Închide".
  */
 export function IosInstallBanner({ className = '' }: { className?: string }) {

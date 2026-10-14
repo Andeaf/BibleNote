@@ -5,7 +5,7 @@ import { BibleNoteDb } from '@/lib/db'
 import { AudioRecorder, SILENCE_MS, activeRecording, type StopReason } from './AudioRecorder'
 
 /**
- * The recorder never loses sound silently (docs/PLAN.md §5.6): a full phone stops and saves, a
+ * The recorder never loses sound silently: a full phone stops and saves, a
  * failed save releases the microphone and keeps the chunks, interruptions are reported.
  * MediaRecorder, the microphone and the page are fakes; the clock is driven by the test.
  */

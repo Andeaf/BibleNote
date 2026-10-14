@@ -2,7 +2,7 @@ import type { BibleNoteDb } from '@/lib/db'
 import type { AnyRow, PurgeResult, SyncApi } from './types'
 
 const DAY_MS = 24 * 60 * 60 * 1000
-/** A Storage object without any row is removed only once it is this old (docs/PLAN.md §5.8). */
+/** A Storage object without any row is removed only once it is this old. */
 export const ORPHAN_MIN_AGE_MS = 30 * DAY_MS
 /** The owner's cleanup runs at most this often (and only after a pull of the session). */
 export const HOUSEKEEPING_INTERVAL_MS = 60 * 60 * 1000
@@ -64,7 +64,7 @@ async function serverFileRows(api: SyncApi, spaceId: string): Promise<Map<string
 }
 
 /**
- * The orphan sweep of one space (docs/PLAN.md §5.8, rev. 15). It never trusts the local copy:
+ * The orphan sweep of one space. It never trusts the local copy:
  * a row another device added, not pulled here yet, or a row still waiting in some outbox after
  * its object went up must never cost the file. So:
  * - the objects are listed first (all pages), then the space's file rows are read from the

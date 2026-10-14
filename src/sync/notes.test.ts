@@ -10,7 +10,7 @@ import { FakeApi, forbiddenError, networkError, serverError } from './testing/fa
 import type { OutboxEntry, SyncNotice } from './types'
 
 /**
- * Notes through the sync engine (docs/PLAN.md §4.2, §4.5, §4.6b). A save_note for a note the
+ * Notes through the sync engine. A save_note for a note the
  * server does not have yet is a create and follows every insert rule.
  */
 

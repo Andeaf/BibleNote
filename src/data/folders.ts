@@ -114,8 +114,8 @@ const sameMoment = (a: string | null, b: string | null) =>
   a !== null && b !== null && Date.parse(a) === Date.parse(b)
 
 /**
- * Takes a folder out of the trash with everything that went in with it (the same deleted_at,
- * docs/PLAN.md §2). An item of its subtree trashed separately, earlier, stays in the trash.
+ * Takes a folder out of the trash with everything that went in with it (the same deleted_at).
+ * An item of its subtree trashed separately, earlier, stays in the trash.
  */
 export async function restoreFolder(
   db: BibleNoteDb,

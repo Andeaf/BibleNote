@@ -1,6 +1,6 @@
 import type { BibleNoteDb, BlobEntry } from './db'
 
-/** Offline cache of files opened recently (docs/PLAN.md §8, decision 14). */
+/** Offline cache of files opened recently. */
 export const CACHE_LIMIT_BYTES = 200 * 1024 * 1024
 
 /**
