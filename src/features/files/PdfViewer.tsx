@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
 // The worker is a separate asset, precached by the service worker so PDFs open offline.
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+// Legacy build, like the main thread (see the alias in vite.config.ts): the modern one needs
+// built-ins older phones lack.
+import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 import { t } from '@/i18n/ro'
 
 // Must be set in the module that renders react-pdf (see the react-pdf README).
@@ -58,6 +60,8 @@ export default function PdfViewer({ file }: PdfViewerProps) {
 function LazyPage({ number, width }: { number: number; width: number }) {
   const ref = useRef<HTMLDivElement>(null)
   const [near, setNear] = useState(number <= 2)
+  // react-pdf leaves a blank canvas when drawing fails; say so instead.
+  const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     const element = ref.current
@@ -72,6 +76,13 @@ function LazyPage({ number, width }: { number: number; width: number }) {
     return () => observer.disconnect()
   }, [near])
 
+  const pageError = (
+    // On the theme's surface, not the white paper: the dark theme's red is light.
+    <p className="bg-surface px-4 py-8 text-center text-danger" style={{ width }}>
+      {t.files.pdfPageError(number)}
+    </p>
+  )
+
   return (
     <div
       ref={ref}
@@ -79,15 +90,20 @@ function LazyPage({ number, width }: { number: number; width: number }) {
       className="overflow-hidden rounded-lg border border-line bg-white shadow-sm"
       style={near ? undefined : { width, height: Math.round(width * PAGE_RATIO) }}
     >
-      {near && (
-        <Page
-          pageNumber={number}
-          width={width}
-          renderTextLayer={false}
-          renderAnnotationLayer={false}
-          loading={<div style={{ width, height: Math.round(width * PAGE_RATIO) }} />}
-        />
-      )}
+      {near &&
+        (failed ? (
+          pageError
+        ) : (
+          <Page
+            pageNumber={number}
+            width={width}
+            renderTextLayer={false}
+            renderAnnotationLayer={false}
+            loading={<div style={{ width, height: Math.round(width * PAGE_RATIO) }} />}
+            error={pageError}
+            onRenderError={() => setFailed(true)}
+          />
+        ))}
     </div>
   )
 }

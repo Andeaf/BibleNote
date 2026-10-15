@@ -2,6 +2,7 @@ import { ChevronRight, Download, ExternalLink, FileWarning } from 'lucide-react'
 import { lazy, Suspense } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { EmptyState } from '@/components/EmptyState'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { PageHeader } from '@/components/PageHeader'
 import { pathTo, sortItems } from '@/data/tree'
 import { canEditRole, useSortMode, useSpace, useSpaceFolders } from '@/features/folders/hooks'
@@ -137,9 +138,12 @@ function PdfView({ file }: { file: FileRow }) {
   const [content, retry] = useFileBlob(file)
   if (content.status !== 'ready') return <ContentStatus state={content} onRetry={retry} />
   return (
-    <Suspense fallback={<p className="py-8 text-center text-muted">{t.files.pdfLoading}</p>}>
-      <PdfViewer file={content.blob} />
-    </Suspense>
+    // If pdf.js fails, the PDF can still be opened or saved, and the app stays on screen.
+    <ErrorBoundary key={file.id} fallback={<DocumentView file={file} />}>
+      <Suspense fallback={<p className="py-8 text-center text-muted">{t.files.pdfLoading}</p>}>
+        <PdfViewer file={content.blob} />
+      </Suspense>
+    </ErrorBoundary>
   )
 }
 

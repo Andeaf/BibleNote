@@ -15,9 +15,18 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
   resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-    },
+    alias: [
+      { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },
+      // pdf.js's modern build calls built-ins only the newest browsers have
+      // (Map.prototype.getOrInsertComputed, Math.sumPrecise): on an older Chrome for Android
+      // every page failed to render. The legacy build of the same version carries polyfills.
+      // The worker is imported from legacy/ in PdfViewer.tsx.
+      { find: /^pdfjs-dist$/, replacement: 'pdfjs-dist/legacy/build/pdf.mjs' },
+      {
+        find: /^pdfjs-dist\/web\/pdf_viewer\.mjs$/,
+        replacement: 'pdfjs-dist/legacy/web/pdf_viewer.mjs',
+      },
+    ],
   },
   plugins: [
     react(),

@@ -344,6 +344,7 @@ export const ro = {
     pdfLoading: 'Se deschide PDF-ul…',
     pdfError: 'PDF-ul nu a putut fi deschis.',
     pdfPage: (n: number) => `Pagina ${n}`,
+    pdfPageError: (n: number) => `Pagina ${n} nu a putut fi afișată.`,
     player: {
       play: 'Redă',
       pause: 'Pauză',
