@@ -5,9 +5,9 @@
 
 An offline-first Bible study notebook, installable as a PWA on phones and desktops, that syncs
 between devices, records audio, stores files and shares folders by link. Built for one owner and a
-handful of guests, on free tiers only, with **no server code of its own**: a React app talks to
+handful of guests, on free tiers only, with **no application server**: a React app talks to
 IndexedDB, and a separate sync engine talks to Supabase (Postgres with row-level security, Storage,
-Realtime, Auth).
+Realtime, Auth). The only server-side code outside Postgres is a small daily keep-alive function.
 
 The user interface is in Romanian; code, comments, tests and this document are in English.
 
@@ -91,9 +91,10 @@ flowchart LR
    (`src/sync/`) pushes the outbox and pulls incrementally; it is the only code that talks to
    Supabase tables, it never imports browser APIs, and it is tested against a fake API with
    `fake-indexeddb`.
-3. **No own server.** Sensitive operations are `security definer` Postgres functions; access
-   control is one SQL helper, `has_space_access(space_id, min_role)`, reused by the table policies,
-   the Storage policies and the Realtime channel policies. Column-level grants replace upserts.
+3. **No application server.** Sensitive operations are `security definer` Postgres functions;
+   access control is one SQL helper, `has_space_access(space_id, min_role)`, reused by the table
+   policies, the Storage policies and the Realtime channel policies. Column-level grants replace
+   upserts.
 4. Notes use **compare-and-set** (`save_note` with a base version); everything else is
    last-write-wins. Deletes are soft (`deleted_at`), and a hard delete only scrubs the row so that
    it can still propagate.
@@ -142,7 +143,8 @@ flowchart LR
 ## Project structure
 
 ```
-.github/workflows/   ci.yml (typecheck, lint, test, build) · keepalive.yml (pings Supabase every 3 days)
+.github/workflows/   ci.yml (typecheck, lint, test, build) · keepalive.yml (backup keep-alive, every 3 days)
+api/                 keepalive.ts (Vercel Function behind the daily Vercel Cron keep-alive)
 data/                Bible source (USFX XML)
 public/              icons, fonts, generated Bible JSON (precached)
 scripts/             build-bible.ts · build-fonts.ts · build-icons.ts
@@ -239,11 +241,15 @@ npm run preview
 ## Deployment
 
 - **Vercel** (Hobby): framework Vite, build `npm run build`, output `dist/`; `vercel.json` has the
-  SPA rewrite and `no-cache` headers for the service worker and the manifest. Environment
-  variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`.
-- **Keep-alive**: free Supabase projects pause after a week without activity, so
-  `keepalive.yml` calls a public `ping()` RPC every three days. It needs the repository secrets
-  `SUPABASE_URL` and `SUPABASE_ANON_KEY` (the publishable key, sent only in the `apikey` header).
+  SPA rewrite (everything except `/api/`), a daily cron and `no-cache` headers for the service
+  worker and the manifest. Environment variables: `VITE_SUPABASE_URL`,
+  `VITE_SUPABASE_PUBLISHABLE_KEY`.
+- **Keep-alive**: free Supabase projects pause after a week without activity. A Vercel Cron job
+  calls `api/keepalive.ts` once a day; it POSTs the public `ping()` RPC with the two variables
+  above (the publishable key goes only in the `apikey` header) and answers only `ok` or `error`.
+  `keepalive.yml` does the same every three days as a backup (GitHub disables scheduled workflows
+  of a public repository after 60 days without activity); it needs the repository secrets
+  `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
 
 ## Known limitations
 
