@@ -125,6 +125,7 @@ export interface Database {
         Update: Partial<Pick<ProfileRow, 'display_name' | 'settings'>>
         Relationships: []
       }
+      // Unused since 2026-10-15 (every account may create spaces); kept for a possible return.
       allowed_emails: {
         Row: { email: string }
         Insert: { email: string }

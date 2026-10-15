@@ -63,6 +63,9 @@ export default defineConfig({
         // files opened offline come from the app's own IndexedDB cache.
         globPatterns: ['**/*.{js,mjs,css,html,svg,png,woff2,json}'],
         navigateFallback: '/index.html',
+        // /api/keepalive opened in a browser must reach Vercel, not the app shell.
+        // privacy.html is a static page; it is precached, so it never falls back either.
+        navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,
       },
     }),

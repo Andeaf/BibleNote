@@ -2,8 +2,9 @@
  * Security test against a real Supabase project: RLS, RPCs, Storage and Realtime policies.
  * Run with `npm run test:rls`; needs .env.test.local (see README.md).
  *
- * It creates throwaway users (owner, editor, viewer, stranger, anonymous guest), two spaces,
- * exercises every cell of the access matrix and deletes everything it created.
+ * It creates throwaway users (owner, editor, viewer, stranger, newcomer, anonymous guest), two
+ * spaces, exercises every cell of the access matrix and deletes everything it created. Since
+ * 2026-10-15 every account may create its own spaces; only anonymous link guests may not.
  * Tests run in file order; destructive ones (disable/regenerate links) come last. Phase 4 adds
  * the sharing flows: guests through links, roles that never go down, removing people, presence.
  * Phase 6 adds the trash: trashed_at set by the server only, purge_expired, purged paths, listing.
@@ -113,8 +114,6 @@ beforeAll(async () => {
   stranger = await createUser('stranger')
   cleanup.users.push(owner.id, editor.id, viewer.id, stranger.id)
 
-  must(await admin.from('allowed_emails').insert({ email: owner.email }).select())
-
   const guestClient = anonClient()
   const { data: guestData, error: guestError } = await guestClient.auth.signInAnonymously()
   if (guestError || !guestData.user) {
@@ -163,9 +162,6 @@ afterAll(async () => {
   for (const id of cleanup.users) {
     await admin.auth.admin.deleteUser(id)
   }
-  if (owner) {
-    await admin.from('allowed_emails').delete().eq('email', owner.email)
-  }
 })
 
 describe('access overview', () => {
@@ -183,16 +179,24 @@ describe('access overview', () => {
     expect(await mySpaces(stranger.client)).toEqual([])
   })
 
-  it('only allowed emails may create spaces', async () => {
+  it('every account may create its own spaces; link guests may not', async () => {
     expect(must(await owner.client.rpc('is_allowed_email'))).toBe(true)
-    expect(must(await editor.client.rpc('is_allowed_email'))).toBe(false)
+    expect(must(await editor.client.rpc('is_allowed_email'))).toBe(true)
     expect(must(await guest.client.rpc('is_allowed_email'))).toBe(false)
 
-    const byStranger = await stranger.client
-      .from('spaces')
-      .insert({ owner_id: stranger.id, name: 'X' })
-      .select()
-    expect(byStranger.error?.code).toBe('42501')
+    // A fresh account that was never invited anywhere (2026-10-15: the app is open to anyone).
+    const newcomer = await createUser('newcomer')
+    cleanup.users.push(newcomer.id)
+    const own = must(
+      await newcomer.client
+        .from('spaces')
+        .insert({ owner_id: newcomer.id, name: 'N' })
+        .select()
+        .single(),
+    )
+    expect(await mySpaces(newcomer.client)).toEqual([{ id: own.id, role: 'owner' }])
+    expect(must(await owner.client.from('spaces').select('id').eq('id', own.id))).toEqual([])
+    expect(must(await stranger.client.from('spaces').select('id').eq('id', own.id))).toEqual([])
 
     const byGuest = await guest.client.from('spaces').insert({ owner_id: guest.id, name: 'X' })
     expect(byGuest.error?.code).toBe('42501')

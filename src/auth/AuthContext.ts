@@ -11,7 +11,10 @@ export interface AuthContextValue {
    * server unreachable). Local data is open; actions that need the server say so.
    */
   offline: boolean
-  /** Whether the signed-in user may create main folders (email in allowed_emails). null = not known yet. */
+  /**
+   * Whether the signed-in user may create main folders: since 2026-10-15 every account except
+   * anonymous link guests (is_allowed_email). null = not known yet.
+   */
   allowed: boolean | null
   signInWithGoogle: () => Promise<void>
   /** Resolves with a Romanian error message, or null on success. */

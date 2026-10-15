@@ -4,8 +4,8 @@
 ![License: source-available](https://img.shields.io/badge/license-source--available-lightgrey)
 
 An offline-first Bible study notebook, installable as a PWA on phones and desktops, that syncs
-between devices, records audio, stores files and shares folders by link. Built for one owner and a
-handful of guests, on free tiers only, with **no application server**: a React app talks to
+between devices, records audio, stores files and shares folders by link. Built for a handful of
+people and their guests, on free tiers only, with **no application server**: a React app talks to
 IndexedDB, and a separate sync engine talks to Supabase (Postgres with row-level security, Storage,
 Realtime, Auth). The only server-side code outside Postgres is a small daily keep-alive function.
 
@@ -15,8 +15,8 @@ The user interface is in Romanian; code, comments, tests and this document are i
 Android) is in progress before the app is handed over to its user, so a few behaviours listed under
 [In progress](#in-progress) are still being verified on real devices.
 
-Live: https://biblenote-app.vercel.app. Creating content needs an allow-listed account; anyone can
-enter a shared folder as a guest through a share link.
+Live: https://biblenote-app.vercel.app. Anyone who signs in with an account can create their own
+folders; anyone can enter a shared folder as a guest through a share link, without an account.
 
 ## Screenshots
 
@@ -69,8 +69,8 @@ Taken on a demo account with sample content.
 ### Not planned for v1
 
 - Real-time collaborative editing of the same note (presence only).
-- A self-service password reset (accounts are created by the owner; Google sign-in is the primary
-  path).
+- Self-service email sign-up and password reset (email + password accounts are created by the
+  maintainer; Google sign-in is the primary path).
 - Any paid infrastructure.
 
 ## Architecture
@@ -116,8 +116,9 @@ flowchart LR
   server rules the ordering depends on.
 - **Why RLS and RPCs instead of an API server**: zero infrastructure to run, and the whole
   authorisation surface is reviewable in SQL. The trade-off is that mistakes are subtle, so there
-  is a regression test that runs against a real project with five roles (owner, editor, viewer,
-  stranger, anonymous guest) and exercises every cell of the access matrix, Storage and Realtime.
+  is a regression test that runs against a real project with six throwaway users (owner, editor,
+  viewer, stranger, newcomer, anonymous guest) and exercises every cell of the access matrix,
+  Storage and Realtime.
 - **Deleting for good is the owner's job**: the 30-day purge and the orphan sweep compare with
   the server's rows, run only after a successful pull, and never touch this device's unsent
   uploads. Nothing is ever removed on the strength of a stale local copy.
@@ -146,7 +147,7 @@ flowchart LR
 .github/workflows/   ci.yml (typecheck, lint, test, build) · keepalive.yml (backup keep-alive, every 3 days)
 api/                 keepalive.ts (Vercel Function behind the daily Vercel Cron keep-alive)
 data/                Bible source (USFX XML)
-public/              icons, fonts, generated Bible JSON (precached)
+public/              icons, fonts, generated Bible JSON (precached), privacy.html (privacy policy)
 scripts/             build-bible.ts · build-fonts.ts · build-icons.ts
 supabase/migrations/ schema, RLS, RPCs, Storage and Realtime policies
 supabase/tests/      rls.test.ts, the security regression test (runs on demand)
@@ -191,14 +192,12 @@ npm install
    (guests through share links), and optionally Google. For Google, the OAuth client needs the
    JavaScript origin `https://<ref>.supabase.co` and the redirect URI
    `https://<ref>.supabase.co/auth/v1/callback`.
-5. Allow-list the accounts that may create folders (**SQL Editor**):
-
-   ```sql
-   insert into public.allowed_emails (email) values ('you@example.com');
-   ```
-
-   Any other signed-in account sees "no access yet"; guests join through share links. Email +
-   password accounts are created from **Authentication → Users** (there is no sign-up form).
+5. Every signed-in account may create its own folders; guests who join through a share link
+   (anonymous sign-in) only see what their link gives them. Email + password accounts are created
+   from **Authentication → Users** (there is no sign-up form, since the free email service only
+   reaches the project's team); with Google, publish the OAuth consent screen so that any Google
+   account can sign in, not only its test users. Publishing needs a home page, a privacy policy
+   link (`/privacy.html`) and, as authorised domains, your app's domain and `<ref>.supabase.co`.
 6. **Project Settings → Realtime**: disable public access. The app only uses private channels,
    authorised in Postgres.
 
@@ -228,7 +227,7 @@ npm run preview
 
 ## Testing
 
-- `npm test` runs the unit tests and the sync engine tests (293 tests in 27 files): ordering,
+- `npm test` runs the unit tests and the sync engine tests (299 tests in 29 files): ordering,
   retries, conflicts, uploads, access loss, housekeeping, the recorder with an injectable clock,
   the reference parser, export, search, i18n (every string must use comma-below diacritics).
 - `npm run test:rls` runs `supabase/tests/rls.test.ts` against a real project. It needs
@@ -253,10 +252,11 @@ npm run preview
 
 ## Known limitations
 
-- Designed for one owner and a few guests, not for many concurrent editors; there is no
-  collaborative editing of a single note.
-- Free-tier budgets: 1 GB of files, 500 MB of database, 5 GB of egress per month; the app shows
-  the storage used and compresses images, and recordings use a voice bitrate (~22 MB per hour).
+- Designed for a handful of people and their guests, not for many concurrent editors; there is
+  no collaborative editing of a single note.
+- Free-tier budgets: 1 GB of files, 500 MB of database, 5 GB of egress per month, shared by every
+  account (there is no per-account quota); the app shows the storage used and compresses images,
+  and recordings use a voice bitrate (~22 MB per hour).
 - Phones export only the notes (a full export with recordings can be hundreds of MB and is done
   from a desktop browser, streamed to disk in Chrome and Edge).
 - On iOS, Google sign-in inside the installed app may bounce back to Safari; email + password is

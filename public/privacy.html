@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ro">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BibleNote – Confidențialitate</title>
+    <meta name="description" content="Ce date păstrează BibleNote, unde și cum le ștergi." />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #faf9f6;
+        --text: #23211d;
+        --muted: #5f5a52;
+        --link: #6b4e16;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #191816;
+          --text: #ece8e1;
+          --muted: #b3ada3;
+          --link: #e2c27f;
+        }
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 1.0625rem/1.65 Georgia, 'Times New Roman', serif;
+      }
+      main {
+        max-width: 40rem;
+        margin: 0 auto;
+        padding: 2.5rem 1rem 4rem;
+      }
+      h1 {
+        font-size: 1.75rem;
+        line-height: 1.25;
+        margin: 0 0 0.25rem;
+      }
+      h2 {
+        font-size: 1.2rem;
+        margin: 2rem 0 0.5rem;
+      }
+      p.updated,
+      .en {
+        color: var(--muted);
+      }
+      ul {
+        padding-left: 1.25rem;
+      }
+      li + li {
+        margin-top: 0.4rem;
+      }
+      a {
+        color: var(--link);
+      }
+      .en {
+        margin-top: 3rem;
+        font-size: 0.95rem;
+        border-top: 1px solid currentColor;
+        padding-top: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>BibleNote – Confidențialitate</h1>
+      <p class="updated">Ultima actualizare: 15 octombrie 2026</p>
+
+      <p>
+        BibleNote este o aplicație gratuită pentru notițe de studiu biblic, făcută pentru câțiva
+        prieteni. Nu are reclame, nu folosește statistici sau urmărire și nu vinde și nu dă datele
+        nimănui.
+      </p>
+
+      <h2>Ce date păstrăm</h2>
+      <ul>
+        <li>
+          <strong>Contul:</strong> adresa de email și numele. La conectarea cu Google, Google ne
+          trimite numele, emailul și linkul pozei de profil; aplicația folosește doar numele și
+          emailul.
+        </li>
+        <li>
+          <strong>Ce creezi:</strong> foldere, notițe, etichete, fișiere și înregistrări audio,
+          plus setările de aspect.
+        </li>
+        <li>
+          <strong>Invitații prin link</strong> nu au cont cu email: păstrăm doar numele pe care și-l
+          scriu la intrare.
+        </li>
+      </ul>
+
+      <h2>Unde stau datele</h2>
+      <ul>
+        <li>Pe dispozitivul tău, în browser, ca aplicația să meargă și fără internet.</li>
+        <li>
+          La Supabase (bază de date și fișiere, în Uniunea Europeană, la Frankfurt), ca să se
+          sincronizeze între dispozitivele tale.
+        </li>
+        <li>
+          Aplicația e găzduită la Vercel, care, ca orice server web, poate păstra jurnale tehnice
+          ale cererilor (de exemplu adresa IP).
+        </li>
+        <li>
+          Nu folosim cookie-uri de urmărire. Sesiunea de conectare stă în memoria locală a
+          browserului.
+        </li>
+      </ul>
+
+      <h2>Cine vede datele</h2>
+      <ul>
+        <li>
+          Folderele tale le vezi doar tu. Altcineva vede un folder numai dacă îi trimiți un link de
+          partajare. Linkul îl poți opri sau schimba oricând, iar persoanele intrate le poți scoate.
+        </li>
+        <li>
+          Cei care întrețin aplicația au acces tehnic la server, dar nu se uită la conținut decât
+          dacă le ceri tu ajutorul.
+        </li>
+      </ul>
+
+      <h2>Ștergerea</h2>
+      <ul>
+        <li>
+          Ce muți în coș se șterge definitiv după 30 de zile în coș, sau imediat, cu „Șterge
+          definitiv”.
+        </li>
+        <li>Deconectarea de pe un dispozitiv șterge datele aplicației de pe acel dispozitiv.</li>
+        <li>Dacă vrei să ștergem tot contul, cu tot ce conține, scrie-ne și o facem.</li>
+      </ul>
+
+      <h2>Contact</h2>
+      <p>
+        Ne poți scrie la adresa de asistență pe care Google o arată pe ecranul de conectare (apasă
+        pe numele aplicației) sau pe
+        <a href="https://github.com/Andeaf/BibleNote">github.com/Andeaf/BibleNote</a>.
+      </p>
+
+      <p class="en" lang="en">
+        In short (English): BibleNote is a free notes app for a few friends. It stores your email
+        address, your name and what you create (folders, notes, files, recordings) on your device
+        and in Supabase (EU, Frankfurt) to sync between your devices. No ads, no analytics, no
+        tracking cookies, nothing is sold or shared. Only you see your folders, unless you send
+        someone a share link. Ask us and we delete your account with all its data.
+      </p>
+
+      <p><a href="/">Înapoi la BibleNote</a></p>
+    </main>
+  </body>
+</html>
